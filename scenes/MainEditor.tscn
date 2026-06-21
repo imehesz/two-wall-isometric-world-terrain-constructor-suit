@@ -150,9 +150,21 @@ horizontal_alignment = 1
 [node name="Sep2" type="HSeparator" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ImporterSection"]
 layout_mode = 2
 
-[node name="Placeholder" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ImporterSection"]
+[node name="ImportPngButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ImporterSection"]
+unique_name_in_owner = true
 layout_mode = 2
-text = "(Phase 2)"
+text = "Load Sprite Sheet (.png)"
+
+[node name="ImportJsonButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ImporterSection"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Load JSON Data (.json)"
+
+[node name="ImportStatus" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ImporterSection"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "No assets loaded"
+autowrap_mode = 2
 
 [node name="AssetLibrarySection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer"]
 layout_mode = 2
@@ -166,9 +178,10 @@ horizontal_alignment = 1
 [node name="Sep3" type="HSeparator" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/AssetLibrarySection"]
 layout_mode = 2
 
-[node name="Placeholder" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/AssetLibrarySection"]
+[node name="AssetGrid" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/AssetLibrarySection"]
+unique_name_in_owner = true
 layout_mode = 2
-text = "(Phase 3)"
+size_flags_horizontal = 3
 
 [node name="ObjectInspectorSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer"]
 layout_mode = 2

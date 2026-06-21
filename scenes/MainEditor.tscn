@@ -1,0 +1,203 @@
+[gd_scene load_steps=4 format=3 uid="uid://rnayxcg51itq"]
+
+[ext_resource type="Script" uid="uid://cwjsx3l3cdkfs" path="res://scripts/MainEditor.gd" id="1_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+content_margin_left = 4.0
+content_margin_top = 4.0
+content_margin_right = 4.0
+content_margin_bottom = 4.0
+bg_color = Color(0.12, 0.11, 0.14, 1)
+
+[sub_resource type="Theme" id="Theme_panel"]
+default_font_size = 10
+
+[node name="MainEditor" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_script")
+
+[node name="HSplitContainer" type="HSplitContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="CanvasPanel" type="PanelContainer" parent="HSplitContainer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(400, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 7.0
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="SubViewportContainer" type="SubViewportContainer" parent="HSplitContainer/CanvasPanel"]
+unique_name_in_owner = true
+layout_mode = 2
+stretch = true
+
+[node name="SubViewport" type="SubViewport" parent="HSplitContainer/CanvasPanel/SubViewportContainer"]
+unique_name_in_owner = true
+transparent_bg = true
+handle_input_locally = false
+size = Vector2i(882, 712)
+render_target_update_mode = 4
+
+[node name="Camera2D" type="Camera2D" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+position = Vector2(0, -150)
+
+[node name="FloorPolygon" type="Polygon2D" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+unique_name_in_owner = true
+color = Color(0.18, 0.25, 0.38, 1)
+polygon = PackedVector2Array(0, -150, 300, 0, 0, 150, -300, 0)
+
+[node name="WallBackPolygon" type="Polygon2D" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+unique_name_in_owner = true
+color = Color(0.14, 0.19, 0.3, 1)
+polygon = PackedVector2Array(0, -150, 300, 0, 300, -350, 0, -500)
+
+[node name="WallLeftPolygon" type="Polygon2D" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+unique_name_in_owner = true
+color = Color(0.11, 0.15, 0.24, 1)
+polygon = PackedVector2Array(-300, 0, 0, -150, 0, -500, -300, -350)
+
+[node name="RoomOutline" type="Line2D" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+unique_name_in_owner = true
+visible = false
+z_index = 1
+points = PackedVector2Array(-300, 0, 0, -150, 0, -500, 300, -350, 300, 0, 0, 150, -300, 0)
+width = 2.0
+default_color = Color(0.55, 0.65, 0.85, 1)
+
+[node name="AssetDropZone" type="Node2D" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+unique_name_in_owner = true
+
+[node name="ControlPanel" type="PanelContainer" parent="HSplitContainer"]
+custom_minimum_size = Vector2(280, 0)
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_stretch_ratio = 3.0
+theme = SubResource("Theme_panel")
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="ScrollContainer" type="ScrollContainer" parent="HSplitContainer/ControlPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="VBoxContainer" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="GlobalSettingsSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Header" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection"]
+layout_mode = 2
+text = "Global Settings"
+horizontal_alignment = 1
+
+[node name="Sep1" type="HSeparator" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection"]
+layout_mode = 2
+
+[node name="BgColorRow" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection"]
+layout_mode = 2
+
+[node name="BgLabel" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection/BgColorRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Canvas Background"
+
+[node name="CanvasBgColorPicker" type="ColorPickerButton" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection/BgColorRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(40, 30)
+layout_mode = 2
+color = Color(0.12, 0.11, 0.14, 1)
+edit_alpha = false
+
+[node name="RoomColorRow" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection"]
+layout_mode = 2
+
+[node name="RoomColorLabel" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection/RoomColorRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Room Color"
+
+[node name="RoomColorPicker" type="ColorPickerButton" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection/RoomColorRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(40, 30)
+layout_mode = 2
+color = Color(0.55, 0.65, 0.85, 1)
+edit_alpha = false
+
+[node name="ImporterSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Header" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ImporterSection"]
+layout_mode = 2
+text = "Importer"
+horizontal_alignment = 1
+
+[node name="Sep2" type="HSeparator" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ImporterSection"]
+layout_mode = 2
+
+[node name="Placeholder" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ImporterSection"]
+layout_mode = 2
+text = "(Phase 2)"
+
+[node name="AssetLibrarySection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Header" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/AssetLibrarySection"]
+layout_mode = 2
+text = "Asset Library"
+horizontal_alignment = 1
+
+[node name="Sep3" type="HSeparator" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/AssetLibrarySection"]
+layout_mode = 2
+
+[node name="Placeholder" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/AssetLibrarySection"]
+layout_mode = 2
+text = "(Phase 3)"
+
+[node name="ObjectInspectorSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Header" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ObjectInspectorSection"]
+layout_mode = 2
+text = "Object Inspector"
+horizontal_alignment = 1
+
+[node name="Sep4" type="HSeparator" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ObjectInspectorSection"]
+layout_mode = 2
+
+[node name="Placeholder" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ObjectInspectorSection"]
+layout_mode = 2
+text = "(Phase 4)"
+
+[node name="ExporterSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Header" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ExporterSection"]
+layout_mode = 2
+text = "Exporter"
+horizontal_alignment = 1
+
+[node name="Sep5" type="HSeparator" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ExporterSection"]
+layout_mode = 2
+
+[node name="Placeholder" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ExporterSection"]
+layout_mode = 2
+text = "(Phase 6)"

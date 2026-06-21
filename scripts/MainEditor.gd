@@ -57,17 +57,16 @@ var _set_count: int = 0
 
 # Phase 4 state
 var current_tool: ToolMode = ToolMode.INSERT
-var selected_sprite: Sprite2D = null
+var _selected_sprites: Array = []
 var undo_stack: Array = []
 var redo_stack: Array = []
 
-# Selection indicators (created programmatically)
+# Selection indicators (per-sprite, managed via pool)
 var _indicator_layer: CanvasLayer = null
-var _sel_outline: Line2D = null
-var _del_bg: Polygon2D = null
-var _del_bar1: Line2D = null
-var _del_bar2: Line2D = null
+var _sprite_indicators: Dictionary = {}  # sprite → {outline, del_bg, del_bar1, del_bar2}
+var _indicator_pool: Array = []  # recycled indicator sets
 var _delete_dialog: ConfirmationDialog = null
+var _pending_delete_sprite: Sprite2D = null
 
 # Inspector rows
 var _inspector_rows: Dictionary = {}
@@ -287,8 +286,9 @@ func _reverse_action(action: Dictionary) -> void:
 			if is_instance_valid(sprite):
 				placed_sprites.erase(sprite)
 				sprite.queue_free()
-			if selected_sprite == sprite:
-				_deselect_sprite()
+			if sprite in _selected_sprites:
+				_selected_sprites.erase(sprite)
+				_free_sprite_indicators(sprite)
 		"delete":
 			var sprite_data = action["sprite_data"]
 			_restore_sprite(sprite_data)
@@ -309,7 +309,7 @@ func _reverse_action(action: Dictionary) -> void:
 			var sprite = action["sprite"]
 			if is_instance_valid(sprite):
 				sprite.flip_h = action["old_flip"]
-	_update_selection_dots()
+	_refresh_all_indicators()
 	_refresh_inspector_values()
 
 
@@ -322,8 +322,9 @@ func _replay_action(action: Dictionary) -> void:
 			if is_instance_valid(sprite):
 				placed_sprites.erase(sprite)
 				sprite.queue_free()
-			if selected_sprite == sprite:
-				_deselect_sprite()
+			if sprite in _selected_sprites:
+				_selected_sprites.erase(sprite)
+				_free_sprite_indicators(sprite)
 		"move":
 			var sprite = action["sprite"]
 			if is_instance_valid(sprite):
@@ -341,7 +342,7 @@ func _replay_action(action: Dictionary) -> void:
 			var sprite = action["sprite"]
 			if is_instance_valid(sprite):
 				sprite.flip_h = action["new_flip"]
-	_update_selection_dots()
+	_refresh_all_indicators()
 	_refresh_inspector_values()
 
 
@@ -386,128 +387,228 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 # ════════════════════════════════════════════════════════════
-# Phase 4: Selection
+# ════════════════════════════════════════════════════════════
+# Phase 4: Selection (multi-select)
 # ════════════════════════════════════════════════════════════
 
 func _setup_selection_indicators() -> void:
-	# CanvasLayer = separate render pass, always on top
 	_indicator_layer = CanvasLayer.new()
 	_indicator_layer.layer = 10
 	sub_viewport.add_child(_indicator_layer)
-
-	# Selection rectangle outline (Line2D)
-	_sel_outline = Line2D.new()
-	_sel_outline.width = 2.0
-	_sel_outline.default_color = Color(0.4, 0.7, 1.0, 0.9)
-	_sel_outline.visible = false
-	_indicator_layer.add_child(_sel_outline)
-
-	# Delete icon: dark bg square + two red diagonal lines
-	_del_bg = Polygon2D.new()
-	_del_bg.color = Color(0, 0, 0, 0.85)
-	var hs := 9.0
-	_del_bg.polygon = PackedVector2Array([
-		Vector2(-hs, -hs), Vector2(hs, -hs), Vector2(hs, hs), Vector2(-hs, hs)])
-	_del_bg.visible = false
-	_indicator_layer.add_child(_del_bg)
-	_del_bar1 = Line2D.new()
-	_del_bar1.width = 2.0
-	_del_bar1.default_color = Color(1.0, 0.3, 0.3)
-	_del_bar1.points = PackedVector2Array([Vector2(-4, -4), Vector2(4, 4)])
-	_del_bar1.visible = false
-	_indicator_layer.add_child(_del_bar1)
-	_del_bar2 = Line2D.new()
-	_del_bar2.width = 2.0
-	_del_bar2.default_color = Color(1.0, 0.3, 0.3)
-	_del_bar2.points = PackedVector2Array([Vector2(4, -4), Vector2(-4, 4)])
-	_del_bar2.visible = false
-	_indicator_layer.add_child(_del_bar2)
-
-	# Delete confirmation dialog
 	_delete_dialog = ConfirmationDialog.new()
 	_delete_dialog.dialog_text = "Delete this asset from the canvas?"
 	add_child(_delete_dialog)
 	_delete_dialog.confirmed.connect(_on_delete_confirmed)
 
 
-func _select_sprite(sprite: Sprite2D) -> void:
-	selected_sprite = sprite
-	_update_selection_dots()
+func _create_indicator_set() -> Dictionary:
+	var hs := 9.0
+	var outline := Line2D.new()
+	outline.width = 2.0
+	outline.default_color = Color(0.4, 0.7, 1.0, 0.9)
+	outline.visible = false
+	_indicator_layer.add_child(outline)
+
+	var del_bg := Polygon2D.new()
+	del_bg.color = Color(0, 0, 0, 0.85)
+	del_bg.polygon = PackedVector2Array([
+		Vector2(-hs, -hs), Vector2(hs, -hs), Vector2(hs, hs), Vector2(-hs, hs)])
+	del_bg.visible = false
+	_indicator_layer.add_child(del_bg)
+
+	var del_bar1 := Line2D.new()
+	del_bar1.width = 2.0
+	del_bar1.default_color = Color(1.0, 0.3, 0.3)
+	del_bar1.points = PackedVector2Array([Vector2(-4, -4), Vector2(4, 4)])
+	del_bar1.visible = false
+	_indicator_layer.add_child(del_bar1)
+
+	var del_bar2 := Line2D.new()
+	del_bar2.width = 2.0
+	del_bar2.default_color = Color(1.0, 0.3, 0.3)
+	del_bar2.points = PackedVector2Array([Vector2(4, -4), Vector2(-4, 4)])
+	del_bar2.visible = false
+	_indicator_layer.add_child(del_bar2)
+
+	return {"outline": outline, "del_bg": del_bg, "del_bar1": del_bar1, "del_bar2": del_bar2}
+
+
+func _get_or_create_indicators(sprite: Sprite2D) -> Dictionary:
+	if _sprite_indicators.has(sprite):
+		return _sprite_indicators[sprite]
+	var inds: Dictionary
+	if _indicator_pool.size() > 0:
+		inds = _indicator_pool.pop_back()
+	else:
+		inds = _create_indicator_set()
+	_sprite_indicators[sprite] = inds
+	return inds
+
+
+func _hide_indicators(sprite: Sprite2D) -> void:
+	if not _sprite_indicators.has(sprite):
+		return
+	var inds = _sprite_indicators[sprite]
+	inds["outline"].visible = false
+	inds["del_bg"].visible = false
+	inds["del_bar1"].visible = false
+	inds["del_bar2"].visible = false
+	_indicator_pool.append(inds)
+	_sprite_indicators.erase(sprite)
+
+
+func _select_sprite(sprite: Sprite2D, additive: bool = false) -> void:
+	if additive:
+		if sprite in _selected_sprites:
+			_selected_sprites.erase(sprite)
+		else:
+			_selected_sprites.append(sprite)
+	else:
+		_selected_sprites.clear()
+		_selected_sprites.append(sprite)
+	_refresh_all_indicators()
 	_update_inspector()
 
 
 func _deselect_sprite() -> void:
-	selected_sprite = null
-	_sel_outline.visible = false
-	_del_bg.visible = false
-	_del_bar1.visible = false
-	_del_bar2.visible = false
+	_selected_sprites.clear()
+	_free_all_indicators()
 	inspector_content.visible = false
 	var btn = inspector_section.get_node_or_null("HeaderButton")
 	if btn:
 		btn.text = "▶ Object Inspector"
 
 
-func _update_selection_dots() -> void:
-	if selected_sprite == null or not is_instance_valid(selected_sprite):
-		_deselect_sprite()
-		return
+func _last_selected() -> Sprite2D:
+	if _selected_sprites.is_empty():
+		return null
+	var sprite = _selected_sprites.back()
+	if is_instance_valid(sprite):
+		return sprite
+	return null
 
-	var sprite = selected_sprite
+
+func _free_all_indicators() -> void:
+	for sprite in _sprite_indicators.keys():
+		var inds = _sprite_indicators[sprite]
+		inds["outline"].visible = false
+		inds["del_bg"].visible = false
+		inds["del_bar1"].visible = false
+		inds["del_bar2"].visible = false
+		_indicator_pool.append(inds)
+	_sprite_indicators.clear()
+
+
+func _refresh_all_indicators() -> void:
+	# Hide indicators for deselected sprites
+	var to_hide: Array = []
+	for sprite in _sprite_indicators.keys():
+		if sprite not in _selected_sprites:
+			to_hide.append(sprite)
+	for sprite in to_hide:
+		_hide_indicators(sprite)
+	# Show indicators for selected sprites
+	for sprite in _selected_sprites:
+		if not is_instance_valid(sprite):
+			continue
+		_update_sprite_indicator(sprite)
+
+
+func _update_sprite_indicator(sprite: Sprite2D) -> void:
+	var inds = _get_or_create_indicators(sprite)
 	var tex = sprite.texture
 	if tex == null:
 		return
-
 	var tex_size = tex.get_size() * sprite.scale
 	var half = tex_size * 0.5
 	var pos = sprite.position
-
-	# Convert world corners → viewport screen positions (CanvasLayer is screen-space)
 	var tl = pos + Vector2(-half.x, -half.y)
 	var tr = pos + Vector2(half.x, -half.y)
 	var br = pos + Vector2(half.x, half.y)
 	var bl = pos + Vector2(-half.x, half.y)
-
-	_sel_outline.points = PackedVector2Array([
+	inds["outline"].points = PackedVector2Array([
 		_world_to_vp(tl), _world_to_vp(tr),
 		_world_to_vp(br), _world_to_vp(bl), _world_to_vp(tl)])
-	_sel_outline.visible = true
-
+	inds["outline"].visible = true
 	var del_vp = _world_to_vp(tr + Vector2(4, -4))
-	_del_bg.position = del_vp
-	_del_bg.visible = true
-	_del_bar1.position = del_vp
-	_del_bar1.visible = true
-	_del_bar2.position = del_vp
-	_del_bar2.visible = true
+	inds["del_bg"].position = del_vp
+	inds["del_bg"].visible = true
+	inds["del_bar1"].position = del_vp
+	inds["del_bar1"].visible = true
+	inds["del_bar2"].position = del_vp
+	inds["del_bar2"].visible = true
 
 
-func _delete_selected_sprite() -> void:
+func _delete_sprite(sprite: Sprite2D) -> void:
+	if not is_instance_valid(sprite):
+		return
+	_pending_delete_sprite = sprite
+	_delete_dialog.popup_centered()
+
+
+func _delete_selected_sprites() -> void:
+	# Delete all selected (used by keyboard shortcut)
+	if _selected_sprites.is_empty():
+		return
+	_pending_delete_sprite = null
 	_delete_dialog.popup_centered()
 
 
 func _on_delete_confirmed() -> void:
-	if selected_sprite == null or not is_instance_valid(selected_sprite):
-		return
-	var sprite = selected_sprite
-	var action = {
-		"type": "delete",
-		"sprite": sprite,
-		"sprite_data": _get_sprite_data(sprite),
-	}
-	_push_undo(action)
-	placed_sprites.erase(sprite)
-	sprite.queue_free()
-	_deselect_sprite()
+	if _pending_delete_sprite != null and is_instance_valid(_pending_delete_sprite):
+		# Single sprite delete (from trash icon)
+		var sprite = _pending_delete_sprite
+		var action = {
+			"type": "delete",
+			"sprite": sprite,
+			"sprite_data": _get_sprite_data(sprite),
+		}
+		_push_undo(action)
+		_selected_sprites.erase(sprite)
+		_free_sprite_indicators(sprite)
+		placed_sprites.erase(sprite)
+		sprite.queue_free()
+		_refresh_all_indicators()
+		_update_inspector()
+	else:
+		# Bulk delete all selected
+		var sprites_copy = _selected_sprites.duplicate()
+		for sprite in sprites_copy:
+			if not is_instance_valid(sprite):
+				continue
+			var action = {
+				"type": "delete",
+				"sprite": sprite,
+				"sprite_data": _get_sprite_data(sprite),
+			}
+			_push_undo(action)
+			_free_sprite_indicators(sprite)
+			placed_sprites.erase(sprite)
+			sprite.queue_free()
+		_selected_sprites.clear()
+		_refresh_all_indicators()
+		_update_inspector()
 
 
-func _is_near_trash(world_pos: Vector2) -> bool:
-	if selected_sprite == null or not is_instance_valid(selected_sprite):
-		return false
-	if _del_bg == null or not _del_bg.visible:
-		return false
-	var click_vp = _world_to_vp(world_pos)
-	return click_vp.distance_to(_del_bg.position) < 14.0
+func _free_sprite_indicators(sprite: Sprite2D) -> void:
+	if _sprite_indicators.has(sprite):
+		_hide_indicators(sprite)
+
+
+func _find_trash_at_world(world_pos: Vector2) -> Sprite2D:
+	# Returns the selected sprite whose trash icon was clicked, or null
+	for sprite in _selected_sprites:
+		if not is_instance_valid(sprite):
+			continue
+		if not _sprite_indicators.has(sprite):
+			continue
+		var inds = _sprite_indicators[sprite]
+		if not inds["del_bg"].visible:
+			continue
+		var click_vp = _world_to_vp(world_pos)
+		if click_vp.distance_to(inds["del_bg"].position) < 14.0:
+			return sprite
+	return null
 
 
 func _world_to_vp(world_pos: Vector2) -> Vector2:
@@ -535,7 +636,7 @@ func _hit_test(world_pos: Vector2) -> Sprite2D:
 # ════════════════════════════════════════════════════════════
 
 func _update_inspector() -> void:
-	if selected_sprite == null or not is_instance_valid(selected_sprite):
+	if _selected_sprites.is_empty():
 		return
 
 	# Clear existing rows
@@ -549,9 +650,12 @@ func _update_inspector() -> void:
 	if btn:
 		btn.text = "▼ Object Inspector"
 
-	# Asset label
+	# Asset label — show count
 	var name_label := Label.new()
-	name_label.text = "Asset: " + str(selected_sprite.get_meta("set_id", "?"))
+	if _selected_sprites.size() == 1:
+		name_label.text = "Asset: " + str(_selected_sprites[0].get_meta("set_id", "?"))
+	else:
+		name_label.text = "%d assets selected" % _selected_sprites.size()
 	name_label.clip_text = true
 	inspector_content.add_child(name_label)
 
@@ -574,7 +678,7 @@ func _update_inspector() -> void:
 	var flip_val := Label.new()
 	flip_val.custom_minimum_size = Vector2(50, 0)
 	flip_val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	flip_val.text = "OFF" if not selected_sprite.flip_h else "ON"
+	flip_val.text = "OFF" if not _last_selected().flip_h else "ON"
 	flip_row.add_child(flip_val)
 	var flip_btn := Button.new()
 	flip_btn.text = "Flip"
@@ -641,84 +745,82 @@ func _get_modifier_multiplier() -> float:
 
 
 func _apply_transform(prop_name: String, delta: float) -> void:
-	if selected_sprite == null or not is_instance_valid(selected_sprite):
+	if _selected_sprites.is_empty():
 		return
 
-	var sprite = selected_sprite
-	var action := {"type": "", "sprite": sprite}
-
-	match prop_name:
-		"move_x":
-			var old_pos = sprite.position
-			var new_pos = old_pos + Vector2(delta, 0)
-			var old_z = sprite.z_index
-			var new_z = int(new_pos.y) + 1000
-			action["type"] = "move"
-			action["old_pos"] = old_pos
-			action["new_pos"] = new_pos
-			action["old_z_index"] = old_z
-			action["new_z_index"] = new_z
-			sprite.position = new_pos
-			sprite.z_index = new_z
-		"move_y":
-			var old_pos = sprite.position
-			var new_pos = old_pos + Vector2(0, delta)
-			action["type"] = "move"
-			action["old_pos"] = old_pos
-			action["new_pos"] = new_pos
-			action["old_z_index"] = sprite.z_index
-			action["new_z_index"] = sprite.z_index
-			sprite.position = new_pos
-		"depth":
-			var old_z = sprite.z_index
-			var new_z = old_z + int(delta)
-			action["type"] = "move"
-			action["old_pos"] = sprite.position
-			action["new_pos"] = sprite.position
-			action["old_z_index"] = old_z
-			action["new_z_index"] = new_z
-			sprite.z_index = new_z
-		"scale":
-			var old_scale = sprite.scale
-			var new_scale = old_scale + Vector2(delta, delta)
-			new_scale = Vector2(maxf(new_scale.x, 0.1), maxf(new_scale.y, 0.1))
-			action["type"] = "scale"
-			action["old_scale"] = old_scale
-			action["new_scale"] = new_scale
-			sprite.scale = new_scale
-		"rotate":
-			var old_rot = sprite.rotation_degrees
-			var new_rot = old_rot + delta
-			action["type"] = "rotate"
-			action["old_rotation"] = old_rot
-			action["new_rotation"] = new_rot
-			sprite.rotation_degrees = new_rot
-
-	_push_undo(action)
-	_update_selection_dots()
+	for sprite in _selected_sprites:
+		if not is_instance_valid(sprite):
+			continue
+		var action := {"type": "", "sprite": sprite}
+		match prop_name:
+			"move_x":
+				var old_pos = sprite.position
+				var new_pos = old_pos + Vector2(delta, 0)
+				action["type"] = "move"
+				action["old_pos"] = old_pos
+				action["new_pos"] = new_pos
+				action["old_z_index"] = sprite.z_index
+				action["new_z_index"] = sprite.z_index
+				sprite.position = new_pos
+			"move_y":
+				var old_pos = sprite.position
+				var new_pos = old_pos + Vector2(0, delta)
+				action["type"] = "move"
+				action["old_pos"] = old_pos
+				action["new_pos"] = new_pos
+				action["old_z_index"] = sprite.z_index
+				action["new_z_index"] = sprite.z_index
+				sprite.position = new_pos
+			"depth":
+				var old_z = sprite.z_index
+				var new_z = old_z + int(delta)
+				action["type"] = "move"
+				action["old_pos"] = sprite.position
+				action["new_pos"] = sprite.position
+				action["old_z_index"] = old_z
+				action["new_z_index"] = new_z
+				sprite.z_index = new_z
+			"scale":
+				var old_scale = sprite.scale
+				var new_scale = old_scale + Vector2(delta, delta)
+				new_scale = Vector2(maxf(new_scale.x, 0.1), maxf(new_scale.y, 0.1))
+				action["type"] = "scale"
+				action["old_scale"] = old_scale
+				action["new_scale"] = new_scale
+				sprite.scale = new_scale
+			"rotate":
+				var old_rot = sprite.rotation_degrees
+				var new_rot = old_rot + delta
+				action["type"] = "rotate"
+				action["old_rotation"] = old_rot
+				action["new_rotation"] = new_rot
+				sprite.rotation_degrees = new_rot
+		_push_undo(action)
+	_refresh_all_indicators()
 	_refresh_inspector_values()
 
 
 func _on_flip_pressed() -> void:
-	if selected_sprite == null or not is_instance_valid(selected_sprite):
+	if _selected_sprites.is_empty():
 		return
-	var sprite = selected_sprite
-	var action = {
-		"type": "flip",
-		"sprite": sprite,
-		"old_flip": sprite.flip_h,
-		"new_flip": !sprite.flip_h,
-	}
-	_push_undo(action)
-	sprite.flip_h = !sprite.flip_h
+	for sprite in _selected_sprites:
+		if not is_instance_valid(sprite):
+			continue
+		var action = {
+			"type": "flip",
+			"sprite": sprite,
+			"old_flip": sprite.flip_h,
+			"new_flip": !sprite.flip_h,
+		}
+		_push_undo(action)
+		sprite.flip_h = !sprite.flip_h
 	_refresh_inspector_values()
 
 
 func _refresh_inspector_values() -> void:
-	if selected_sprite == null or not is_instance_valid(selected_sprite):
+	var sprite = _last_selected()
+	if sprite == null:
 		return
-	var sprite = selected_sprite
-
 	if _inspector_rows.has("move_x"):
 		_inspector_rows["move_x"]["value_label"].text = "%.1f" % sprite.position.x
 	if _inspector_rows.has("move_y"):
@@ -1121,8 +1223,13 @@ func _remove_asset_set(set_id: int) -> void:
 		if sprite.get_meta("set_id", -1) == set_id:
 			to_remove.append(sprite)
 	for sprite in to_remove:
+		_selected_sprites.erase(sprite)
+		_free_sprite_indicators(sprite)
 		placed_sprites.erase(sprite)
 		sprite.queue_free()
+
+	if _selected_sprites.is_empty():
+		_deselect_sprite()
 
 	if s["section"]:
 		s["section"].queue_free()
@@ -1199,12 +1306,14 @@ func _on_canvas_gui_input(event: InputEvent) -> void:
 		elif current_tool == ToolMode.SELECT:
 			# Select mode — check trash first, then hit test
 			var world_pos = _container_to_world(event.position)
-			if _is_near_trash(world_pos):
-				_delete_selected_sprite()
+			var trash_sprite = _find_trash_at_world(world_pos)
+			if trash_sprite:
+				_delete_sprite(trash_sprite)
 			else:
 				var hit = _hit_test(world_pos)
+				var additive = Input.is_key_pressed(KEY_SHIFT)
 				if hit:
-					_select_sprite(hit)
+					_select_sprite(hit, additive)
 				else:
 					_deselect_sprite()
 

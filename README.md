@@ -17,3 +17,6 @@ TWIWCS provides a frictionless, drag-and-drop sandbox environment to test, assem
 
 ## Technology
 Built using **Godot 4** and deployed via **HTML5**, TWIWCS requires absolutely no installation or executable downloads. It runs entirely locally in your web browser.
+
+## Use
+LeshyLabs for slicing a sprite image (make sure to use JSON-TP_Array format): https://www.leshylabs.com/apps/sstool/

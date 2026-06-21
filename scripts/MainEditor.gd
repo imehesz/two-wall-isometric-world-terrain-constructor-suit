@@ -43,6 +43,10 @@ const MOVE_STEP := 1.0
 const DEPTH_STEP := 100.0
 const SCALE_STEP := 0.1
 const ROTATE_STEP := 5.0
+const ZOOM_STEP := 0.15
+const ZOOM_MIN := 0.1
+const ZOOM_MAX := 5.0
+const SETTINGS_KEY := "twiwcs_settings"
 
 # ── Enums ────────────────────────────────────────────────────
 enum ToolMode { INSERT, SELECT }
@@ -79,6 +83,9 @@ var _preview_tex: TextureRect
 var _confirm_dialog: ConfirmationDialog
 var _pending_removal_id: int = -1
 
+# Phase 5: Pan state
+var _is_panning: bool = false
+
 
 func _ready() -> void:
 	_apply_bg_color(COLOR_BG)
@@ -86,7 +93,9 @@ func _ready() -> void:
 	_draw_room()
 	call_deferred("_fit_camera")
 	canvas_bg_color.color_changed.connect(_apply_bg_color)
+	canvas_bg_color.color_changed.connect(_save_settings)
 	room_color_picker.color_changed.connect(_apply_room_color)
+	room_color_picker.color_changed.connect(_save_settings)
 
 	_setup_preview()
 	_setup_confirm_dialog()
@@ -98,6 +107,7 @@ func _ready() -> void:
 	sub_viewport_container.gui_input.connect(_on_canvas_gui_input)
 
 	call_deferred("_auto_load_test_assets")
+	call_deferred("_load_settings")
 
 
 # ════════════════════════════════════════════════════════════
@@ -355,6 +365,7 @@ func _get_sprite_data(sprite: Sprite2D) -> Dictionary:
 		"flip_h": sprite.flip_h,
 		"z_index": sprite.z_index,
 		"set_id": sprite.get_meta("set_id", -1),
+		"locked": sprite.get_meta("locked", false),
 	}
 
 
@@ -368,18 +379,34 @@ func _restore_sprite(data: Dictionary) -> Sprite2D:
 	sprite.z_index = data["z_index"]
 	sprite.set_meta("set_id", data["set_id"])
 	sprite.set_meta("base_scale", Vector2(1.0, 1.0))
+	sprite.set_meta("locked", data.get("locked", false))
 	asset_drop_zone.add_child(sprite)
 	placed_sprites.append(sprite)
 	return sprite
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	# Phase 5: Stop panning if mouse released outside canvas
+	if _is_panning and event is InputEventMouseButton and not event.pressed:
+		if event.button_index == MOUSE_BUTTON_MIDDLE or event.button_index == MOUSE_BUTTON_RIGHT:
+			_is_panning = false
+			return
+	# Phase 5: Pan motion outside canvas
+	if _is_panning and event is InputEventMouseMotion:
+		_do_pan(event.relative)
+		return
 	if event is InputEventKey and event.pressed:
 		if event.ctrl_pressed and event.keycode == KEY_Z:
 			if event.shift_pressed:
 				_redo()
 			else:
 				_undo()
+			get_viewport().set_input_as_handled()
+		elif event.ctrl_pressed and event.keycode == KEY_I:
+			_on_tool_changed(ToolMode.INSERT)
+			get_viewport().set_input_as_handled()
+		elif event.ctrl_pressed and event.keycode == KEY_J:
+			_on_tool_changed(ToolMode.SELECT)
 			get_viewport().set_input_as_handled()
 		elif event.ctrl_pressed and event.keycode == KEY_Y:
 			_redo()
@@ -430,7 +457,33 @@ func _create_indicator_set() -> Dictionary:
 	del_bar2.visible = false
 	_indicator_layer.add_child(del_bar2)
 
-	return {"outline": outline, "del_bg": del_bg, "del_bar1": del_bar1, "del_bar2": del_bar2}
+	# Lock background
+	var lock_bg := Polygon2D.new()
+	lock_bg.color = Color(0, 0, 0, 0.85)
+	lock_bg.polygon = PackedVector2Array([
+		Vector2(-hs, -hs), Vector2(hs, -hs), Vector2(hs, hs), Vector2(-hs, hs)])
+	lock_bg.visible = false
+	_indicator_layer.add_child(lock_bg)
+
+	# Lock shackle (inverted U shape)
+	var lock_shackle := Line2D.new()
+	lock_shackle.width = 2.0
+	lock_shackle.default_color = Color(0.5, 0.5, 0.5)
+	lock_shackle.points = PackedVector2Array([
+		Vector2(-3, 0), Vector2(-3, -4), Vector2(3, -4), Vector2(3, 0)])
+	lock_shackle.visible = false
+	_indicator_layer.add_child(lock_shackle)
+
+	# Lock body (rectangle)
+	var lock_body := Polygon2D.new()
+	lock_body.color = Color(0.5, 0.5, 0.5)
+	lock_body.polygon = PackedVector2Array([
+		Vector2(-4, 0), Vector2(4, 0), Vector2(4, 5), Vector2(-4, 5)])
+	lock_body.visible = false
+	_indicator_layer.add_child(lock_body)
+
+	return {"outline": outline, "del_bg": del_bg, "del_bar1": del_bar1, "del_bar2": del_bar2,
+		"lock_bg": lock_bg, "lock_shackle": lock_shackle, "lock_body": lock_body}
 
 
 func _get_or_create_indicators(sprite: Sprite2D) -> Dictionary:
@@ -453,6 +506,9 @@ func _hide_indicators(sprite: Sprite2D) -> void:
 	inds["del_bg"].visible = false
 	inds["del_bar1"].visible = false
 	inds["del_bar2"].visible = false
+	inds["lock_bg"].visible = false
+	inds["lock_shackle"].visible = false
+	inds["lock_body"].visible = false
 	_indicator_pool.append(inds)
 	_sprite_indicators.erase(sprite)
 
@@ -495,6 +551,9 @@ func _free_all_indicators() -> void:
 		inds["del_bg"].visible = false
 		inds["del_bar1"].visible = false
 		inds["del_bar2"].visible = false
+		inds["lock_bg"].visible = false
+		inds["lock_shackle"].visible = false
+		inds["lock_body"].visible = false
 		_indicator_pool.append(inds)
 	_sprite_indicators.clear()
 
@@ -530,6 +589,8 @@ func _update_sprite_indicator(sprite: Sprite2D) -> void:
 		_world_to_vp(tl), _world_to_vp(tr),
 		_world_to_vp(br), _world_to_vp(bl), _world_to_vp(tl)])
 	inds["outline"].visible = true
+	var locked = sprite.get_meta("locked", false)
+	inds["outline"].default_color = Color(1.0, 0.6, 0.2, 0.9) if locked else Color(0.4, 0.7, 1.0, 0.9)
 	var del_vp = _world_to_vp(tr + Vector2(4, -4))
 	inds["del_bg"].position = del_vp
 	inds["del_bg"].visible = true
@@ -537,6 +598,17 @@ func _update_sprite_indicator(sprite: Sprite2D) -> void:
 	inds["del_bar1"].visible = true
 	inds["del_bar2"].position = del_vp
 	inds["del_bar2"].visible = true
+	# Lock icon (below delete icon)
+	var lock_vp = _world_to_vp(tr + Vector2(4, 16))
+	inds["lock_bg"].position = lock_vp
+	inds["lock_bg"].visible = true
+	inds["lock_shackle"].position = lock_vp
+	inds["lock_shackle"].visible = true
+	inds["lock_body"].position = lock_vp
+	inds["lock_body"].visible = true
+	var lock_color = Color(1.0, 0.85, 0.2) if locked else Color(0.5, 0.5, 0.5)
+	inds["lock_shackle"].default_color = lock_color
+	inds["lock_body"].color = lock_color
 
 
 func _delete_sprite(sprite: Sprite2D) -> void:
@@ -609,6 +681,28 @@ func _find_trash_at_world(world_pos: Vector2) -> Sprite2D:
 		if click_vp.distance_to(inds["del_bg"].position) < 14.0:
 			return sprite
 	return null
+
+
+func _find_lock_at_world(world_pos: Vector2) -> Sprite2D:
+	for sprite in _selected_sprites:
+		if not is_instance_valid(sprite):
+			continue
+		if not _sprite_indicators.has(sprite):
+			continue
+		var inds = _sprite_indicators[sprite]
+		if not inds["lock_bg"].visible:
+			continue
+		var click_vp = _world_to_vp(world_pos)
+		if click_vp.distance_to(inds["lock_bg"].position) < 14.0:
+			return sprite
+	return null
+
+
+func _toggle_lock_for_sprite(sprite: Sprite2D) -> void:
+	var locked = sprite.get_meta("locked", false)
+	sprite.set_meta("locked", not locked)
+	_refresh_inspector_values()
+	_refresh_all_indicators()
 
 
 func _world_to_vp(world_pos: Vector2) -> Vector2:
@@ -688,6 +782,25 @@ func _update_inspector() -> void:
 	inspector_content.add_child(flip_row)
 	_inspector_rows["flip"] = {"value_label": flip_val}
 
+	# Phase 5: Lock toggle
+	var lock_row := HBoxContainer.new()
+	var lock_label := Label.new()
+	lock_label.text = "Lock"
+	lock_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lock_row.add_child(lock_label)
+	var lock_val := Label.new()
+	lock_val.custom_minimum_size = Vector2(50, 0)
+	lock_val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lock_val.text = "ON" if _last_selected().get_meta("locked", false) else "OFF"
+	lock_row.add_child(lock_val)
+	var lock_btn := Button.new()
+	lock_btn.text = "Lock"
+	lock_btn.custom_minimum_size = Vector2(52, 0)
+	lock_btn.pressed.connect(_on_lock_pressed)
+	lock_row.add_child(lock_btn)
+	inspector_content.add_child(lock_row)
+	_inspector_rows["lock"] = {"value_label": lock_val, "button": lock_btn}
+
 	_refresh_inspector_values()
 
 
@@ -751,6 +864,8 @@ func _apply_transform(prop_name: String, delta: float) -> void:
 	for sprite in _selected_sprites:
 		if not is_instance_valid(sprite):
 			continue
+		if sprite.get_meta("locked", false):
+			continue
 		var action := {"type": "", "sprite": sprite}
 		match prop_name:
 			"move_x":
@@ -806,6 +921,8 @@ func _on_flip_pressed() -> void:
 	for sprite in _selected_sprites:
 		if not is_instance_valid(sprite):
 			continue
+		if sprite.get_meta("locked", false):
+			continue
 		var action = {
 			"type": "flip",
 			"sprite": sprite,
@@ -815,6 +932,16 @@ func _on_flip_pressed() -> void:
 		_push_undo(action)
 		sprite.flip_h = !sprite.flip_h
 	_refresh_inspector_values()
+
+
+func _on_lock_pressed() -> void:
+	for sprite in _selected_sprites:
+		if not is_instance_valid(sprite):
+			continue
+		var locked = sprite.get_meta("locked", false)
+		sprite.set_meta("locked", not locked)
+	_refresh_inspector_values()
+	_refresh_all_indicators()
 
 
 func _refresh_inspector_values() -> void:
@@ -833,6 +960,9 @@ func _refresh_inspector_values() -> void:
 		_inspector_rows["rotate"]["value_label"].text = "%.1f°" % sprite.rotation_degrees
 	if _inspector_rows.has("flip"):
 		_inspector_rows["flip"]["value_label"].text = "ON" if sprite.flip_h else "OFF"
+	if _inspector_rows.has("lock"):
+		_inspector_rows["lock"]["value_label"].text = "ON" if sprite.get_meta("locked", false) else "OFF"
+		_inspector_rows["lock"]["button"].text = "Unlock" if sprite.get_meta("locked", false) else "Lock"
 
 
 # ════════════════════════════════════════════════════════════
@@ -1298,24 +1428,115 @@ func _clear_asset_highlights() -> void:
 
 
 func _on_canvas_gui_input(event: InputEvent) -> void:
+	# ── Phase 5: Zoom (mouse wheel) ──
+	if event is InputEventMouseButton and event.pressed:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
+			_apply_zoom(ZOOM_STEP, event.position)
+			return
+		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_apply_zoom(-ZOOM_STEP, event.position)
+			return
+		elif event.button_index == MOUSE_BUTTON_MIDDLE or event.button_index == MOUSE_BUTTON_RIGHT:
+			_is_panning = true
+			return
+	# ── Phase 5: Stop panning on release ──
+	if event is InputEventMouseButton and not event.pressed:
+		if _is_panning and (event.button_index == MOUSE_BUTTON_MIDDLE or event.button_index == MOUSE_BUTTON_RIGHT):
+			_is_panning = false
+			return
+	# ── Phase 5: Pan (mouse motion while panning) ──
+	if event is InputEventMouseMotion and _is_panning:
+		_do_pan(event.relative)
+		return
+	# ── Left click: insert or select ──
 	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 		if current_tool == ToolMode.INSERT:
-			# Insert mode — place asset
 			if active_asset_index >= 0 and active_asset_texture != null:
 				_place_asset_at_click(event.position)
 		elif current_tool == ToolMode.SELECT:
-			# Select mode — check trash first, then hit test
 			var world_pos = _container_to_world(event.position)
 			var trash_sprite = _find_trash_at_world(world_pos)
 			if trash_sprite:
 				_delete_sprite(trash_sprite)
 			else:
-				var hit = _hit_test(world_pos)
-				var additive = Input.is_key_pressed(KEY_SHIFT)
-				if hit:
-					_select_sprite(hit, additive)
+				var lock_sprite = _find_lock_at_world(world_pos)
+				if lock_sprite:
+					_toggle_lock_for_sprite(lock_sprite)
 				else:
-					_deselect_sprite()
+					var hit = _hit_test(world_pos)
+					var additive = Input.is_key_pressed(KEY_SHIFT)
+					if hit:
+						_select_sprite(hit, additive)
+					else:
+						_deselect_sprite()
+
+
+# ════════════════════════════════════════════════════════════
+# Phase 5: Canvas Zoom & Pan
+# ════════════════════════════════════════════════════════════
+
+func _apply_zoom(delta: float, container_pos: Vector2) -> void:
+	var cam := sub_viewport.get_node("Camera2D") as Camera2D
+	var vp_size = Vector2(sub_viewport.size)
+	var container_size = Vector2(sub_viewport_container.size)
+	if container_size.x == 0 or container_size.y == 0:
+		return
+	# World position under cursor before zoom
+	var vp_pos = container_pos * (vp_size / container_size)
+	var world_before = (vp_pos - vp_size * 0.5) / cam.zoom + cam.position
+	# Apply new zoom
+	var old_zoom = cam.zoom.x
+	var new_zoom = clampf(old_zoom + delta, ZOOM_MIN, ZOOM_MAX)
+	cam.zoom = Vector2(new_zoom, new_zoom)
+	# Adjust camera so same world point stays under cursor
+	var world_after = (vp_pos - vp_size * 0.5) / cam.zoom + cam.position
+	cam.position += world_before - world_after
+
+
+func _do_pan(relative: Vector2) -> void:
+	var cam := sub_viewport.get_node("Camera2D") as Camera2D
+	var vp_size = Vector2(sub_viewport.size)
+	var container_size = Vector2(sub_viewport_container.size)
+	if container_size.x == 0 or container_size.y == 0:
+		return
+	var scale_factor = vp_size / container_size
+	cam.position -= (relative * scale_factor) / cam.zoom
+
+
+# ════════════════════════════════════════════════════════════
+# Phase 5: Settings Persistence (localStorage)
+# ════════════════════════════════════════════════════════════
+
+func _save_settings() -> void:
+	if not JavaScriptBridge:
+		return
+	var s = {
+		"bg": [canvas_bg_color.color.r, canvas_bg_color.color.g, canvas_bg_color.color.b],
+		"room": [room_color_picker.color.r, room_color_picker.color.g, room_color_picker.color.b],
+	}
+	var j = JSON.stringify(s)
+	JavaScriptBridge.eval("localStorage.setItem('%s','%s')" % [SETTINGS_KEY, j])
+
+
+func _load_settings() -> void:
+	if not JavaScriptBridge:
+		return
+	var raw = JavaScriptBridge.eval("localStorage.getItem('%s')" % SETTINGS_KEY)
+	if raw == null:
+		return
+	var p = JSON.parse_string(str(raw))
+	if p == null:
+		return
+	if p.has("bg"):
+		var a = p["bg"]
+		var c = Color(a[0], a[1], a[2])
+		canvas_bg_color.color = c
+		_apply_bg_color(c)
+	if p.has("room"):
+		var a = p["room"]
+		var c = Color(a[0], a[1], a[2])
+		room_color_picker.color = c
+		_apply_room_color(c)
 
 
 func _container_to_world(container_pos: Vector2) -> Vector2:

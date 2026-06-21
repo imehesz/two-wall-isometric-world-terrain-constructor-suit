@@ -113,6 +113,57 @@ layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 2
 
+[node name="Toolbar" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 4
+
+[node name="InsertButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/Toolbar"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "✚ Insert"
+flat = true
+
+[node name="SelectButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/Toolbar"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+text = "➤ Select"
+flat = true
+
+[node name="UndoButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/Toolbar"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(32, 0)
+layout_mode = 2
+text = "↩"
+flat = true
+
+[node name="RedoButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/Toolbar"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(32, 0)
+layout_mode = 2
+text = "↪"
+flat = true
+
+[node name="ObjectInspectorSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="HeaderButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ObjectInspectorSection"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "▶ Object Inspector"
+flat = true
+clip_text = true
+
+[node name="Content" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ObjectInspectorSection"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+
 [node name="AddAssetsButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
 unique_name_in_owner = true
 layout_mode = 2
@@ -168,26 +219,6 @@ custom_minimum_size = Vector2(40, 30)
 layout_mode = 2
 color = Color(0.55, 0.65, 0.85, 1)
 edit_alpha = false
-
-[node name="ObjectInspectorSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="HeaderButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ObjectInspectorSection"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "▶ Object Inspector"
-flat = true
-clip_text = true
-
-[node name="Content" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ObjectInspectorSection"]
-visible = false
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="Placeholder" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ObjectInspectorSection/Content"]
-layout_mode = 2
-text = "(Phase 4)"
 
 [node name="ExporterSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
 layout_mode = 2

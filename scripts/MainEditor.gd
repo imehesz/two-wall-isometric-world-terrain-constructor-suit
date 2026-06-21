@@ -2,26 +2,24 @@ extends Control
 
 ## Two-Wall Isometric Terrain Constructor
 ## Phase 1: UI Framework & Canvas Setup
-## Phase 2: HTML5 File I/O Importer
-## Phase 3: Asset Library Grid & Click-To-Paint Placement
+## Phase 2: Multi-set file importer
+## Phase 3: Per-set asset grid & click-to-paint
 
-# ── Phase 1 References ──────────────────────────────────────
+# ── References ───────────────────────────────────────────────
 @onready var sub_viewport: SubViewport = %SubViewport
 @onready var sub_viewport_container: SubViewportContainer = %SubViewportContainer
 @onready var canvas_panel: PanelContainer = %CanvasPanel
 @onready var canvas_bg_color: ColorPickerButton = %CanvasBgColorPicker
 @onready var room_color_picker: ColorPickerButton = %RoomColorPicker
+@onready var canvas_background: ColorRect = %CanvasBackground
 @onready var floor_poly: Polygon2D = %FloorPolygon
 @onready var wall_back_poly: Polygon2D = %WallBackPolygon
 @onready var wall_left_poly: Polygon2D = %WallLeftPolygon
 @onready var room_outline: Line2D = %RoomOutline
 @onready var asset_drop_zone: Node2D = %AssetDropZone
-
-# ── Phase 2/3 References ────────────────────────────────────
-@onready var import_png_button: Button = %ImportPngButton
-@onready var import_json_button: Button = %ImportJsonButton
-@onready var import_status: Label = %ImportStatus
-@onready var asset_grid: VBoxContainer = %AssetGrid
+@onready var add_assets_button: Button = %AddAssetsButton
+@onready var asset_sections_container: VBoxContainer = %AssetSectionsContainer
+@onready var main_vbox: VBoxContainer = %MainVBox
 
 # ── Constants ────────────────────────────────────────────────
 const ISO_WIDTH := 600.0
@@ -30,45 +28,38 @@ const WALL_HEIGHT := 200.0
 const COLOR_BG := Color(0.12, 0.11, 0.14)
 const COLOR_ROOM := Color(0.55, 0.65, 0.85)
 
-# ── Import State ─────────────────────────────────────────────
-var sheet_texture: Texture2D = null
-var frames: Array = []           # [{filename, x, y, w, h}, ...]
-var asset_textures: Array = []   # [AtlasTexture, ...]
-var active_asset_index: int = -1 # -1 = nothing selected (not painting)
-var placed_sprites: Array = []   # All Sprite2D nodes on canvas
+# ── State ────────────────────────────────────────────────────
+var active_asset_index: int = -1
+var active_asset_texture: AtlasTexture = null
+var placed_sprites: Array = []
+var _next_set_id: int = 0
+var asset_sets: Array = []
+var _set_count: int = 0
+
+# ── Preview ──────────────────────────────────────────────────
+var _preview_panel: PanelContainer
+var _preview_tex: TextureRect
+
+# ── Confirm dialog ───────────────────────────────────────────
+var _confirm_dialog: ConfirmationDialog
+var _pending_removal_id: int = -1
 
 
 func _ready() -> void:
-	# Phase 1 setup
-	sub_viewport.transparent_bg = true
 	_apply_bg_color(COLOR_BG)
 	_apply_room_color(COLOR_ROOM)
 	_draw_room()
 	call_deferred("_fit_camera")
-
 	canvas_bg_color.color_changed.connect(_apply_bg_color)
 	room_color_picker.color_changed.connect(_apply_room_color)
 
-	# Phase 2: Import buttons
-	import_png_button.pressed.connect(_on_import_png_pressed)
-	import_json_button.pressed.connect(_on_import_json_pressed)
-
-	# Phase 3: Canvas click-to-paint + hover preview
 	_setup_preview()
+	_setup_confirm_dialog()
+	_setup_collapsibles()
+	add_assets_button.pressed.connect(_on_add_assets_pressed)
 	sub_viewport_container.gui_input.connect(_on_canvas_gui_input)
 
-	# Auto-load test assets so you don't have to click every time
 	call_deferred("_auto_load_test_assets")
-
-
-func _auto_load_test_assets() -> void:
-	var tex = load("res://assets/sprites/steam-interior-items3.png") as Texture2D
-	if tex:
-		sheet_texture = tex
-	var file = FileAccess.open("res://assets/sprites/steam-interior-items3_tp-array.json", FileAccess.READ)
-	if file:
-		_parse_json_text(file.get_as_text())
-		file.close()
 
 
 # ════════════════════════════════════════════════════════════
@@ -93,7 +84,6 @@ func _draw_room() -> void:
 	var hw := ISO_WIDTH / 2.0
 	var hh := ISO_HEIGHT / 2.0
 	var wh := WALL_HEIGHT
-
 	floor_poly.polygon = PackedVector2Array([
 		Vector2(0.0, -hh), Vector2(hw, 0.0), Vector2(0.0, hh), Vector2(-hw, 0.0)])
 	wall_back_poly.polygon = PackedVector2Array([
@@ -132,25 +122,176 @@ func _apply_room_color(color: Color) -> void:
 
 
 # ════════════════════════════════════════════════════════════
-# Phase 2: File I/O Importer
+# Collapsible Sections
 # ════════════════════════════════════════════════════════════
 
-func _on_import_png_pressed() -> void:
-	if OS.has_feature("web"):
-		_pick_file_web("image/png", true)
-	else:
-		_pick_file_desktop("*.png;PNG Images", _on_png_selected)
+func _setup_collapsibles() -> void:
+	# Connect static section headers
+	for section in _get_static_sections():
+		_connect_section_toggle(section)
 
 
-func _on_import_json_pressed() -> void:
+func _connect_section_toggle(section: Control) -> void:
+	var btn: Button = section.get_node_or_null("HeaderButton")
+	var content: Control = section.get_node_or_null("Content")
+	if btn and content:
+		var title := btn.text.replace("▼ ", "").replace("▶ ", "")
+		btn.pressed.connect(_toggle_section.bind(btn, content, title))
+
+
+func _toggle_section(btn: Button, content: Control, title: String) -> void:
+	content.visible = !content.visible
+	btn.text = ("▼ " if content.visible else "▶ ") + title
+
+
+func _get_static_sections() -> Array:
+	var result: Array = []
+	for child in main_vbox.get_children():
+		if child.name.ends_with("Section"):
+			result.append(child)
+	return result
+
+
+# ════════════════════════════════════════════════════════════
+# Confirm Dialog
+# ════════════════════════════════════════════════════════════
+
+func _setup_confirm_dialog() -> void:
+	_confirm_dialog = ConfirmationDialog.new()
+	_confirm_dialog.dialog_text = "Remove this asset set and all its assets from the canvas?"
+	add_child(_confirm_dialog)
+	_confirm_dialog.confirmed.connect(_on_confirm_removal)
+
+
+func _on_confirm_removal() -> void:
+	if _pending_removal_id >= 0:
+		_remove_asset_set(_pending_removal_id)
+		_pending_removal_id = -1
+
+
+# ════════════════════════════════════════════════════════════
+# Phase 2: Multi-Set Importer
+# ════════════════════════════════════════════════════════════
+
+func _on_add_assets_pressed() -> void:
+	_next_set_id += 1
+	_set_count += 1
+	var set_id := _next_set_id
+
+	var entry = {
+		"id": set_id,
+		"png_path": "",
+		"json_path": "",
+		"sheet_texture": null,
+		"frames": [],
+		"textures": [],
+		"section": _create_asset_section(set_id, _set_count),
+	}
+	asset_sets.append(entry)
+	asset_sections_container.add_child(entry["section"])
+
+
+func _create_asset_section(set_id: int, number: int) -> VBoxContainer:
+	var section := VBoxContainer.new()
+	section.name = "AssetSet_%d" % set_id
+
+	# Header button (collapsible)
+	var btn := Button.new()
+	btn.name = "HeaderButton"
+	btn.flat = true
+	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn.text = "▼ Assets %d" % number
+	btn.clip_text = true
+	section.add_child(btn)
+
+	# Content container
+	var content := VBoxContainer.new()
+	content.name = "Content"
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	section.add_child(content)
+
+	# Connect toggle
+	btn.pressed.connect(_toggle_section.bind(btn, content, "Assets %d" % number))
+
+	# PNG row
+	var png_row := HBoxContainer.new()
+	png_row.name = "PngRow"
+	var png_label := Label.new()
+	png_label.name = "PngLabel"
+	png_label.text = "Load Sprite Sheet (.png)"
+	png_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	png_label.clip_text = true
+	png_row.add_child(png_label)
+	var png_btn := Button.new()
+	png_btn.name = "PngLoadBtn"
+	png_btn.text = "..."
+	png_btn.custom_minimum_size = Vector2(24, 0)
+	png_btn.pressed.connect(_on_set_png_pressed.bind(set_id))
+	png_row.add_child(png_btn)
+	var png_trash := Button.new()
+	png_trash.name = "PngTrash"
+	png_trash.text = "🗑"
+	png_trash.custom_minimum_size = Vector2(24, 0)
+	png_trash.visible = false
+	png_trash.pressed.connect(_on_set_remove_pressed.bind(set_id))
+	png_row.add_child(png_trash)
+	content.add_child(png_row)
+
+	# JSON row
+	var json_row := HBoxContainer.new()
+	json_row.name = "JsonRow"
+	var json_label := Label.new()
+	json_label.name = "JsonLabel"
+	json_label.text = "Load JSON Data (.json)"
+	json_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	json_label.clip_text = true
+	json_row.add_child(json_label)
+	var json_btn := Button.new()
+	json_btn.name = "JsonLoadBtn"
+	json_btn.text = "..."
+	json_btn.custom_minimum_size = Vector2(24, 0)
+	json_btn.pressed.connect(_on_set_json_pressed.bind(set_id))
+	json_row.add_child(json_btn)
+	var json_trash := Button.new()
+	json_trash.name = "JsonTrash"
+	json_trash.text = "🗑"
+	json_trash.custom_minimum_size = Vector2(24, 0)
+	json_trash.visible = false
+	json_trash.pressed.connect(_on_set_remove_pressed.bind(set_id))
+	json_row.add_child(json_trash)
+	content.add_child(json_row)
+
+	# Thumbnails
+	var thumbs := HFlowContainer.new()
+	thumbs.name = "Thumbs"
+	content.add_child(thumbs)
+
+	return section
+
+
+func _find_set(set_id: int):
+	for s in asset_sets:
+		if s["id"] == set_id:
+			return s
+	return {}
+
+
+func _on_set_png_pressed(set_id: int) -> void:
 	if OS.has_feature("web"):
-		_pick_file_web(".json", false)
+		_pick_file_web("image/png", true, set_id)
 	else:
-		_pick_file_desktop("*.json;JSON Data", _on_json_selected)
+		_pick_file_desktop("*.png;PNG Images", func(path): _load_png_for_set(set_id, path))
+
+
+func _on_set_json_pressed(set_id: int) -> void:
+	if OS.has_feature("web"):
+		_pick_file_web(".json", false, set_id)
+	else:
+		_pick_file_desktop("*.json;JSON Data", func(path): _load_json_for_set(set_id, path))
 
 
 func _pick_file_desktop(filter: String, callback: Callable) -> void:
-	var dialog = FileDialog.new()
+	var dialog := FileDialog.new()
 	dialog.file_mode = FileDialog.FILE_MODE_OPEN_FILE
 	dialog.access = FileDialog.ACCESS_FILESYSTEM
 	dialog.filters = PackedStringArray([filter])
@@ -160,11 +301,11 @@ func _pick_file_desktop(filter: String, callback: Callable) -> void:
 	dialog.popup_centered(Vector2i(800, 600))
 
 
-func _pick_file_web(accept: String, is_png: bool) -> void:
+func _pick_file_web(accept: String, is_png: bool, set_id: int) -> void:
 	if not JavaScriptBridge:
-		import_status.text = "File dialogs not available in this build"
 		return
-	var cb = JavaScriptBridge.create_callback(_on_web_png_data if is_png else _on_web_json_data)
+	var cb: Callable = _load_png_from_web.bind(set_id) if is_png else _load_json_from_web.bind(set_id)
+	var js_cb = JavaScriptBridge.create_callback(cb)
 	JavaScriptBridge.eval("""
 	(function() {
 		var input = document.createElement('input');
@@ -176,47 +317,46 @@ func _pick_file_web(accept: String, is_png: bool) -> void:
 			var file = e.target.files[0];
 			if (!file) { document.body.removeChild(input); return; }
 			var reader = new FileReader();
-			reader.onload = function(ev) {
-				%s(ev.target.result);
-				document.body.removeChild(input);
-			};
+			reader.onload = function(ev) { %s(ev.target.result); document.body.removeChild(input); };
 			reader.readAs%s(file);
 		};
 		input.click();
 	})();
-	""" % [accept, cb, "ArrayBuffer" if is_png else "Text"])
+	""" % [accept, js_cb, "ArrayBuffer" if is_png else "Text"])
 
 
-func _on_png_selected(path: String) -> void:
-	var image := Image.new()
-	var err := image.load(path)
-	if err == OK:
-		sheet_texture = ImageTexture.create_from_image(image)
-		_update_status()
-		_try_build_atlases()
-	else:
-		import_status.text = "Failed to load image"
-
-
-func _on_json_selected(path: String) -> void:
-	var file = FileAccess.open(path, FileAccess.READ)
-	if file == null:
-		import_status.text = "Failed to open JSON"
+func _load_png_for_set(set_id: int, path: String) -> void:
+	var s = _find_set(set_id)
+	if s.is_empty():
 		return
-	_parse_json_text(file.get_as_text())
-	file.close()
+	var image := Image.new()
+	if image.load(path) == OK:
+		s["sheet_texture"] = ImageTexture.create_from_image(image)
+		s["png_path"] = path.get_file()
+		_update_set_ui(set_id)
+		_try_build_set(set_id)
 
 
-func _on_web_png_data(args: Array) -> void:
+func _load_json_for_set(set_id: int, path: String) -> void:
+	var s = _find_set(set_id)
+	if s.is_empty():
+		return
+	var file = FileAccess.open(path, FileAccess.READ)
+	if file:
+		_parse_json_for_set(set_id, file.get_as_text())
+		s["json_path"] = path.get_file()
+		file.close()
+		_update_set_ui(set_id)
+		_try_build_set(set_id)
+
+
+func _load_png_from_web(set_id: int, args: Array) -> void:
 	if args.size() == 0:
 		return
-	# args[0] is a JS ArrayBuffer — convert to PackedByteArray
-	var buffer = args[0]
 	var byte_array: PackedByteArray
-	if buffer is PackedByteArray:
-		byte_array = buffer
+	if args[0] is PackedByteArray:
+		byte_array = args[0]
 	else:
-		# Fallback: try reading from JS
 		var raw = JavaScriptBridge.eval("""
 			(function() {
 				if (!window._hermes_png_buffer) return [];
@@ -228,93 +368,239 @@ func _on_web_png_data(args: Array) -> void:
 		""")
 		if raw is Array:
 			byte_array = PackedByteArray(raw)
+	var image := Image.new()
+	if image.load_png_from_buffer(byte_array) == OK:
+		var s = _find_set(set_id)
+		if not s.is_empty():
+			s["sheet_texture"] = ImageTexture.create_from_image(image)
+			s["png_path"] = "web_upload.png"
+			_update_set_ui(set_id)
+			_try_build_set(set_id)
 
-	var image = Image.new()
-	var err = image.load_png_from_buffer(byte_array)
-	if err == OK:
-		sheet_texture = ImageTexture.create_from_image(image)
-		_update_status()
-		_try_build_atlases()
-	else:
-		import_status.text = "Failed to decode PNG"
 
-
-func _on_web_json_data(args: Array) -> void:
+func _load_json_from_web(set_id: int, args: Array) -> void:
 	if args.size() > 0:
-		_parse_json_text(str(args[0]))
+		_parse_json_for_set(set_id, str(args[0]))
+		var s = _find_set(set_id)
+		if not s.is_empty():
+			s["json_path"] = "web_upload.json"
+			_update_set_ui(set_id)
+			_try_build_set(set_id)
 
 
-func _parse_json_text(text: String) -> void:
+func _parse_json_for_set(set_id: int, text: String) -> void:
+	var s = _find_set(set_id)
+	if s.is_empty():
+		return
 	var parsed = JSON.parse_string(text)
 	if parsed == null:
-		import_status.text = "Invalid JSON"
 		return
-
-	# Support both TexturePacker Array format and flat format
+	s["frames"] = []
 	if parsed is Dictionary and parsed.has("frames"):
-		# TexturePacker JSON Array format
-		frames.clear()
 		for frame in parsed["frames"]:
 			var f: Dictionary = frame.get("frame", {})
-			frames.append({
+			s["frames"].append({
 				"filename": frame.get("filename", ""),
-				"x": int(f.get("x", 0)),
-				"y": int(f.get("y", 0)),
-				"w": int(f.get("w", 0)),
-				"h": int(f.get("h", 0)),
+				"x": int(f.get("x", 0)), "y": int(f.get("y", 0)),
+				"w": int(f.get("w", 0)), "h": int(f.get("h", 0)),
 			})
 	elif parsed is Array:
-		# Flat format (like steampunk-test: [{name, x, y, width, height}])
-		frames.clear()
 		for item in parsed:
-			frames.append({
+			s["frames"].append({
 				"filename": item.get("name", item.get("filename", "")),
-				"x": int(item.get("x", 0)),
-				"y": int(item.get("y", 0)),
+				"x": int(item.get("x", 0)), "y": int(item.get("y", 0)),
 				"w": int(item.get("width", item.get("w", 0))),
 				"h": int(item.get("height", item.get("h", 0))),
 			})
-	else:
-		import_status.text = "Unrecognised JSON format"
+
+
+func _try_build_set(set_id: int) -> void:
+	var s = _find_set(set_id)
+	if s.is_empty():
+		return
+	if s["sheet_texture"] == null or s["frames"].size() == 0:
 		return
 
-	_update_status()
-	_try_build_atlases()
-
-
-func _try_build_atlases() -> void:
-	if sheet_texture == null or frames.size() == 0:
-		return
-	_build_atlases()
-
-
-func _build_atlases() -> void:
-	asset_textures.clear()
-	for frame in frames:
+	s["textures"] = []
+	for frame in s["frames"]:
 		var atlas := AtlasTexture.new()
-		atlas.atlas = sheet_texture
+		atlas.atlas = s["sheet_texture"]
 		atlas.region = Rect2(frame["x"], frame["y"], frame["w"], frame["h"])
-		asset_textures.append(atlas)
-	_populate_asset_grid()
-	_update_status()
+		s["textures"].append(atlas)
+
+	# Populate thumbnails inside this set's section
+	var section: VBoxContainer = s["section"]
+	var content = section.get_node_or_null("Content")
+	if content:
+		var thumbs = content.get_node_or_null("Thumbs")
+		if thumbs:
+			for child in thumbs.get_children():
+				child.queue_free()
+			for i in range(s["textures"].size()):
+				var thumb_panel := Panel.new()
+				thumb_panel.custom_minimum_size = Vector2(50, 50)
+				var tex_rect := TextureRect.new()
+				tex_rect.texture = s["textures"][i]
+				tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+				tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+				tex_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
+				thumb_panel.add_child(tex_rect)
+
+				# Wire hover preview + click-to-paint
+				var local_idx := i
+				var sid := set_id
+				thumb_panel.gui_input.connect(_on_asset_gui_input.bind(sid, local_idx))
+				thumb_panel.mouse_entered.connect(_on_thumb_hover.bind(s["textures"][local_idx]))
+				thumb_panel.mouse_exited.connect(_hide_preview)
+
+				thumbs.add_child(thumb_panel)
 
 
-func _update_status() -> void:
-	var parts: PackedStringArray = []
-	parts.append("Sheet: %s" % ("loaded" if sheet_texture else "—"))
-	parts.append("JSON: %s" % ("%d frames" % frames.size() if frames.size() > 0 else "—"))
-	if active_asset_index >= 0 and active_asset_index < frames.size():
-		parts.append("Active: %s" % frames[active_asset_index]["filename"])
-	import_status.text = " | ".join(parts)
+func _update_set_ui(set_id: int) -> void:
+	var s = _find_set(set_id)
+	if s.is_empty():
+		return
+	var section: VBoxContainer = s["section"]
+	var content = section.get_node_or_null("Content")
+	if not content:
+		return
+	var png_label: Label = content.find_child("PngLabel", true, false)
+	var json_label: Label = content.find_child("JsonLabel", true, false)
+	var png_trash: Button = content.find_child("PngTrash", true, false)
+	var json_trash: Button = content.find_child("JsonTrash", true, false)
+
+	if png_label:
+		if s["png_path"] != "":
+			png_label.text = s["png_path"]
+			if png_trash:
+				png_trash.visible = true
+		else:
+			png_label.text = "Load Sprite Sheet (.png)"
+			if png_trash:
+				png_trash.visible = false
+
+	if json_label:
+		if s["json_path"] != "":
+			json_label.text = s["json_path"]
+			if json_trash:
+				json_trash.visible = true
+		else:
+			json_label.text = "Load JSON Data (.json)"
+			if json_trash:
+				json_trash.visible = false
+
+
+func _on_set_remove_pressed(set_id: int) -> void:
+	_pending_removal_id = set_id
+	_confirm_dialog.popup_centered()
+
+
+func _remove_asset_set(set_id: int) -> void:
+	var idx := -1
+	for i in range(asset_sets.size()):
+		if asset_sets[i]["id"] == set_id:
+			idx = i
+			break
+	if idx < 0:
+		return
+	var s = asset_sets[idx]
+
+	# Remove placed sprites from this set
+	var to_remove: Array = []
+	for sprite in placed_sprites:
+		if sprite.get_meta("set_id", -1) == set_id:
+			to_remove.append(sprite)
+	for sprite in to_remove:
+		placed_sprites.erase(sprite)
+		sprite.queue_free()
+
+	if s["section"]:
+		s["section"].queue_free()
+	asset_sets.remove_at(idx)
 
 
 # ════════════════════════════════════════════════════════════
-# Phase 3: Asset Library & Click-To-Paint
+# Phase 3: Click-To-Paint
 # ════════════════════════════════════════════════════════════
 
-var _preview_panel: PanelContainer
-var _preview_tex: TextureRect
+func _on_thumb_hover(texture: Texture2D) -> void:
+	_show_preview(texture)
 
+
+func _on_asset_gui_input(event: InputEvent, set_id: int, local_idx: int) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var s = _find_set(set_id)
+		if not s.is_empty() and local_idx < s["textures"].size():
+			active_asset_index = local_idx
+			active_asset_texture = s["textures"][local_idx]
+			_highlight_selected_in_set(set_id, local_idx)
+
+
+func _highlight_selected_in_set(active_set_id: int, active_local_idx: int) -> void:
+	# Clear all highlights across all sets
+	for s in asset_sets:
+		if not s.has("section"):
+			continue
+		var section: VBoxContainer = s["section"]
+		var content = section.get_node_or_null("Content")
+		if not content:
+			continue
+		var thumbs = content.get_node_or_null("Thumbs")
+		if not thumbs:
+			continue
+		for i in range(thumbs.get_child_count()):
+			var panel = thumbs.get_child(i)
+			if panel is Panel:
+				panel.remove_theme_stylebox_override("panel")
+				if s["id"] == active_set_id and i == active_local_idx:
+					var sel := StyleBoxFlat.new()
+					sel.bg_color = Color(0.2, 0.2, 0.25)
+					sel.border_color = Color(0.6, 0.8, 1.0)
+					sel.set_border_width_all(2)
+					sel.set_content_margin_all(0)
+					panel.add_theme_stylebox_override("panel", sel)
+
+
+func _on_canvas_gui_input(event: InputEvent) -> void:
+	if active_asset_index < 0 or active_asset_texture == null:
+		return
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_place_asset_at_click(event.position)
+
+
+func _place_asset_at_click(container_pos: Vector2) -> void:
+	var vp_size := Vector2(sub_viewport.size)
+	var container_size := Vector2(sub_viewport_container.size)
+	if container_size.x == 0 or container_size.y == 0:
+		return
+	var vp_pos := container_pos * (vp_size / container_size)
+	var cam := sub_viewport.get_node("Camera2D") as Camera2D
+	var world_pos := (vp_pos - vp_size * 0.5) / cam.zoom + cam.position
+	_place_asset(world_pos)
+
+
+func _place_asset(world_pos: Vector2) -> void:
+	var sprite := Sprite2D.new()
+	sprite.texture = active_asset_texture
+	sprite.position = world_pos
+	sprite.z_index = int(world_pos.y) + 1000
+
+	var set_id := -1
+	for s in asset_sets:
+		if active_asset_texture in s["textures"]:
+			set_id = s["id"]
+			break
+
+	sprite.set_meta("set_id", set_id)
+	sprite.set_meta("base_scale", Vector2(1.0, 1.0))
+
+	asset_drop_zone.add_child(sprite)
+	placed_sprites.append(sprite)
+
+
+# ════════════════════════════════════════════════════════════
+# Preview Popup
+# ════════════════════════════════════════════════════════════
 
 func _setup_preview() -> void:
 	_preview_panel = PanelContainer.new()
@@ -327,7 +613,6 @@ func _setup_preview() -> void:
 	sb.set_content_margin_all(6)
 	_preview_panel.add_theme_stylebox_override("panel", sb)
 	add_child(_preview_panel)
-
 	_preview_tex = TextureRect.new()
 	_preview_tex.custom_minimum_size = Vector2(180, 180)
 	_preview_tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
@@ -352,102 +637,24 @@ func _hide_preview() -> void:
 	_preview_panel.visible = false
 
 
-func _populate_asset_grid() -> void:
-	for child in asset_grid.get_children():
-		child.queue_free()
+# ════════════════════════════════════════════════════════════
+# Auto-load test assets
+# ════════════════════════════════════════════════════════════
 
-	# Calculate how many 50px+4px-gap items fit across the panel
-	var item_w := 54.0  # 50px + 4px gap
-	var grid_w := asset_grid.size.x if asset_grid.size.x > 0 else 350.0
-	var columns := maxi(int(grid_w / item_w), 1)
-	var row: HBoxContainer = null
+func _auto_load_test_assets() -> void:
+	_on_add_assets_pressed()
+	var set_id = asset_sets[0]["id"]
 
-	for i in range(asset_textures.size()):
-		if i % columns == 0:
-			row = HBoxContainer.new()
-			row.add_theme_constant_override("separation", 4)
-			asset_grid.add_child(row)
+	var tex = load("res://assets/sprites/steam-interior-items3.png") as Texture2D
+	if tex:
+		asset_sets[0]["sheet_texture"] = tex
+		asset_sets[0]["png_path"] = "steam-interior-items3.png"
 
-		var panel := Panel.new()
-		panel.custom_minimum_size = Vector2(50, 50)
+	var file = FileAccess.open("res://assets/sprites/steam-interior-items3_tp-array.json", FileAccess.READ)
+	if file:
+		_parse_json_for_set(set_id, file.get_as_text())
+		asset_sets[0]["json_path"] = "steam-interior-items3_tp-array.json"
+		file.close()
 
-		var tex_rect := TextureRect.new()
-		tex_rect.texture = asset_textures[i]
-		tex_rect.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		tex_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		tex_rect.set_anchors_preset(Control.PRESET_FULL_RECT)
-		panel.add_child(tex_rect)
-
-		panel.gui_input.connect(_on_asset_gui_input.bind(i))
-		panel.mouse_entered.connect(_on_grid_hover.bind(i))
-		panel.mouse_exited.connect(_hide_preview)
-		row.add_child(panel)
-
-	_update_grid_highlights()
-
-
-func _on_grid_hover(index: int) -> void:
-	if index >= 0 and index < asset_textures.size():
-		_show_preview(asset_textures[index])
-
-
-func _on_asset_selected(index: int) -> void:
-	if active_asset_index == index:
-		active_asset_index = -1  # Toggle off
-	else:
-		active_asset_index = index
-	_update_grid_highlights()
-	_update_status()
-
-
-func _update_grid_highlights() -> void:
-	var idx := 0
-	for row in asset_grid.get_children():
-		if row is HBoxContainer:
-			for panel in row.get_children():
-				if panel is Panel:
-					panel.modulate = Color(1.3, 1.3, 1.6) if idx == active_asset_index else Color.WHITE
-					idx += 1
-
-
-func _on_asset_gui_input(event: InputEvent, index: int) -> void:
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_on_asset_selected(index)
-
-
-func _on_canvas_gui_input(event: InputEvent) -> void:
-	if active_asset_index < 0:
-		return
-	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-		_place_asset_at_click(event.position)
-
-
-func _place_asset_at_click(container_pos: Vector2) -> void:
-	var vp_size := Vector2(sub_viewport.size)
-	var container_size := Vector2(sub_viewport_container.size)
-	if container_size.x == 0 or container_size.y == 0:
-		return
-
-	# Container coords → SubViewport coords (stretch = true, 1:1 after scale)
-	var vp_pos := container_pos * (vp_size / container_size)
-
-	# SubViewport coords → World coords (account for Camera2D)
-	var cam := sub_viewport.get_node("Camera2D") as Camera2D
-	var world_pos := (vp_pos - vp_size * 0.5) / cam.zoom + cam.position
-
-	_place_asset(world_pos)
-
-
-func _place_asset(world_pos: Vector2) -> void:
-	var sprite := Sprite2D.new()
-	sprite.texture = asset_textures[active_asset_index]
-	sprite.position = world_pos
-	sprite.z_index = int(world_pos.y) + 1000  # Offset so sprites always render above room (z=0)
-
-	# Metadata for Phase 6 export
-	sprite.set_meta("asset_id", frames[active_asset_index]["filename"])
-	sprite.set_meta("asset_index", active_asset_index)
-	sprite.set_meta("base_scale", Vector2(1.0, 1.0))
-
-	asset_drop_zone.add_child(sprite)
-	placed_sprites.append(sprite)
+	_update_set_ui(set_id)
+	_try_build_set(set_id)

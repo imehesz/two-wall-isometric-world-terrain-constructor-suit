@@ -1,6 +1,12 @@
-[gd_scene load_steps=4 format=3 uid="uid://rnayxcg51itq"]
+[gd_scene load_steps=5 format=3 uid="uid://rnayxcg51itq"]
 
 [ext_resource type="Script" uid="uid://cwjsx3l3cdkfs" path="res://scripts/MainEditor.gd" id="1_script"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_canvas"]
+bg_color = Color(0.12, 0.11, 0.14, 1)
+
+[sub_resource type="Theme" id="Theme_panel"]
+default_font_size = 10
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 content_margin_left = 4.0
@@ -8,9 +14,6 @@ content_margin_top = 4.0
 content_margin_right = 4.0
 content_margin_bottom = 4.0
 bg_color = Color(0.12, 0.11, 0.14, 1)
-
-[sub_resource type="Theme" id="Theme_panel"]
-default_font_size = 10
 
 [node name="MainEditor" type="Control"]
 layout_mode = 3
@@ -35,19 +38,32 @@ custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 7.0
-theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+theme_override_styles/panel = SubResource("StyleBoxFlat_canvas")
 
 [node name="SubViewportContainer" type="SubViewportContainer" parent="HSplitContainer/CanvasPanel"]
 unique_name_in_owner = true
 layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
 stretch = true
 
 [node name="SubViewport" type="SubViewport" parent="HSplitContainer/CanvasPanel/SubViewportContainer"]
 unique_name_in_owner = true
 transparent_bg = true
 handle_input_locally = false
-size = Vector2i(882, 712)
+size = Vector2i(890, 720)
 render_target_update_mode = 4
+
+[node name="CanvasBackground" type="ColorRect" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+unique_name_in_owner = true
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+color = Color(0.12, 0.11, 0.14, 1)
 
 [node name="Camera2D" type="Camera2D" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
 position = Vector2(0, -150)
@@ -91,126 +107,104 @@ layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 
-[node name="VBoxContainer" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer"]
+[node name="MainVBox" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer"]
+unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 8
+theme_override_constants/separation = 2
 
-[node name="GlobalSettingsSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer"]
+[node name="AddAssetsButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+text = "Add Assets +"
+
+[node name="AssetSectionsContainer" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 2
+
+[node name="GlobalSettingsSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="Header" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection"]
+[node name="HeaderButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/GlobalSettingsSection"]
 layout_mode = 2
-text = "Global Settings"
-horizontal_alignment = 1
+size_flags_horizontal = 3
+text = "▼ Global Settings"
+flat = true
+clip_text = true
 
-[node name="Sep1" type="HSeparator" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection"]
+[node name="Content" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/GlobalSettingsSection"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="BgColorRow" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/GlobalSettingsSection/Content"]
 layout_mode = 2
 
-[node name="BgColorRow" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection"]
-layout_mode = 2
-
-[node name="BgLabel" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection/BgColorRow"]
+[node name="BgLabel" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/GlobalSettingsSection/Content/BgColorRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Canvas Background"
 
-[node name="CanvasBgColorPicker" type="ColorPickerButton" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection/BgColorRow"]
+[node name="CanvasBgColorPicker" type="ColorPickerButton" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/GlobalSettingsSection/Content/BgColorRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(40, 30)
 layout_mode = 2
 color = Color(0.12, 0.11, 0.14, 1)
 edit_alpha = false
 
-[node name="RoomColorRow" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection"]
+[node name="RoomColorRow" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/GlobalSettingsSection/Content"]
 layout_mode = 2
 
-[node name="RoomColorLabel" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection/RoomColorRow"]
+[node name="RoomColorLabel" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/GlobalSettingsSection/Content/RoomColorRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Room Color"
 
-[node name="RoomColorPicker" type="ColorPickerButton" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/GlobalSettingsSection/RoomColorRow"]
+[node name="RoomColorPicker" type="ColorPickerButton" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/GlobalSettingsSection/Content/RoomColorRow"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(40, 30)
 layout_mode = 2
 color = Color(0.55, 0.65, 0.85, 1)
 edit_alpha = false
 
-[node name="ImporterSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer"]
+[node name="ObjectInspectorSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="Header" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ImporterSection"]
+[node name="HeaderButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ObjectInspectorSection"]
 layout_mode = 2
-text = "Importer"
-horizontal_alignment = 1
+size_flags_horizontal = 3
+text = "▶ Object Inspector"
+flat = true
+clip_text = true
 
-[node name="Sep2" type="HSeparator" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ImporterSection"]
-layout_mode = 2
-
-[node name="ImportPngButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ImporterSection"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Load Sprite Sheet (.png)"
-
-[node name="ImportJsonButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ImporterSection"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Load JSON Data (.json)"
-
-[node name="ImportStatus" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ImporterSection"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "No assets loaded"
-autowrap_mode = 2
-
-[node name="AssetLibrarySection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer"]
+[node name="Content" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ObjectInspectorSection"]
+visible = false
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="Header" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/AssetLibrarySection"]
-layout_mode = 2
-text = "Asset Library"
-horizontal_alignment = 1
-
-[node name="Sep3" type="HSeparator" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/AssetLibrarySection"]
-layout_mode = 2
-
-[node name="AssetGrid" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/AssetLibrarySection"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="ObjectInspectorSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer"]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="Header" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ObjectInspectorSection"]
-layout_mode = 2
-text = "Object Inspector"
-horizontal_alignment = 1
-
-[node name="Sep4" type="HSeparator" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ObjectInspectorSection"]
-layout_mode = 2
-
-[node name="Placeholder" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ObjectInspectorSection"]
+[node name="Placeholder" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ObjectInspectorSection/Content"]
 layout_mode = 2
 text = "(Phase 4)"
 
-[node name="ExporterSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer"]
+[node name="ExporterSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="Header" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ExporterSection"]
+[node name="HeaderButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ExporterSection"]
 layout_mode = 2
-text = "Exporter"
-horizontal_alignment = 1
+size_flags_horizontal = 3
+text = "▶ Exporter"
+flat = true
+clip_text = true
 
-[node name="Sep5" type="HSeparator" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ExporterSection"]
+[node name="Content" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ExporterSection"]
+visible = false
 layout_mode = 2
+size_flags_horizontal = 3
 
-[node name="Placeholder" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/VBoxContainer/ExporterSection"]
+[node name="Placeholder" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ExporterSection/Content"]
 layout_mode = 2
 text = "(Phase 6)"

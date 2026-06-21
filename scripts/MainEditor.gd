@@ -109,6 +109,21 @@ func _ready() -> void:
 	call_deferred("_auto_load_test_assets")
 	call_deferred("_load_settings")
 
+	# Version label (bottom-right)
+	var dt = Time.get_datetime_dict_from_system()
+	var datetime_str = "%04d%02d%02d%02d%02d" % [dt.year, dt.month, dt.day, dt.hour, dt.minute]
+	var version_label := Label.new()
+	version_label.text = "v.0.1." + datetime_str
+	version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	version_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
+	version_label.offset_left = -200
+	version_label.offset_top = -30
+	version_label.offset_right = -8
+	version_label.offset_bottom = -8
+	version_label.add_theme_font_size_override("font_size", 12)
+	version_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.45))
+	add_child(version_label)
+
 
 # ════════════════════════════════════════════════════════════
 # Phase 1: Camera & Room

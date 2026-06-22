@@ -1,91 +1,11 @@
-extends Control
+extends "res://scripts/editor_base.gd"
+## Two-Wall Isometric Terrain Constructor — Main Editor
+## UI setup, tools, selection, indicators, inspector, assets, save/load.
 
-## Two-Wall Isometric Terrain Constructor
-## Phase 1: UI Framework & Canvas Setup
-## Phase 2: Multi-set file importer
-## Phase 3: Per-set asset grid & click-to-paint
-## Phase 4: Selection & Fine-Tune Inspector Engine
 
-# ── References ───────────────────────────────────────────────
-@onready var sub_viewport: SubViewport = %SubViewport
-@onready var sub_viewport_container: SubViewportContainer = %SubViewportContainer
-@onready var canvas_panel: PanelContainer = %CanvasPanel
-@onready var canvas_bg_color: ColorPickerButton = %CanvasBgColorPicker
-@onready var room_color_picker: ColorPickerButton = %RoomColorPicker
-@onready var canvas_background: ColorRect = %CanvasBackground
-@onready var floor_poly: Polygon2D = %FloorPolygon
-@onready var wall_back_poly: Polygon2D = %WallBackPolygon
-@onready var wall_left_poly: Polygon2D = %WallLeftPolygon
-@onready var room_outline: Line2D = %RoomOutline
-@onready var asset_drop_zone: Node2D = %AssetDropZone
-@onready var add_assets_button: Button = %AddAssetsButton
-@onready var asset_sections_container: VBoxContainer = %AssetSectionsContainer
-@onready var main_vbox: VBoxContainer = %MainVBox
-# Phase 4 references
-@onready var toolbar: HBoxContainer = %Toolbar
-@onready var insert_button: Button = %InsertButton
-@onready var select_button: Button = %SelectButton
-@onready var undo_button: Button = %UndoButton
-@onready var redo_button: Button = %RedoButton
-@onready var inspector_section: VBoxContainer = %ObjectInspectorSection
-@onready var inspector_content: VBoxContainer = inspector_section.get_node("Content")
-
-# ── Constants ────────────────────────────────────────────────
-const ISO_WIDTH := 600.0
-const ISO_HEIGHT := 300.0
-const WALL_HEIGHT := 200.0
-const COLOR_BG := Color(0.12, 0.11, 0.14)
-const COLOR_ROOM := Color(0.55, 0.65, 0.85)
-const MAX_UNDO := 20
-
-# Transform increments (base values)
-const MOVE_STEP := 1.0
-const DEPTH_STEP := 100.0
-const SCALE_STEP := 0.1
-const ROTATE_STEP := 5.0
-const ZOOM_STEP := 0.15
-const ZOOM_MIN := 0.1
-const ZOOM_MAX := 5.0
-const SETTINGS_KEY := "twiwcs_settings"
-
-# ── Enums ────────────────────────────────────────────────────
-enum ToolMode { INSERT, SELECT }
-
-# ── State ────────────────────────────────────────────────────
-var active_asset_index: int = -1
-var active_asset_texture: AtlasTexture = null
-var placed_sprites: Array = []
-var _next_set_id: int = 0
-var asset_sets: Array = []
-var _set_count: int = 0
-
-# Phase 4 state
-var current_tool: ToolMode = ToolMode.INSERT
-var _selected_sprites: Array = []
-var undo_stack: Array = []
-var redo_stack: Array = []
-
-# Selection indicators (per-sprite, managed via pool)
-var _indicator_layer: CanvasLayer = null
-var _sprite_indicators: Dictionary = {}  # sprite → {outline, del_bg, del_bar1, del_bar2}
-var _indicator_pool: Array = []  # recycled indicator sets
-var _delete_dialog: ConfirmationDialog = null
-var _pending_delete_sprite: Sprite2D = null
-
-# Inspector rows
-var _inspector_rows: Dictionary = {}
-
-# ── Preview ──────────────────────────────────────────────────
-var _preview_panel: PanelContainer
-var _preview_tex: TextureRect
-
-# ── Confirm dialog ───────────────────────────────────────────
-var _confirm_dialog: ConfirmationDialog
-var _pending_removal_id: int = -1
-
-# Phase 5: Pan state
-var _is_panning: bool = false
-
+# ════════════════════════════════════════════════════════════
+# Initialization
+# ════════════════════════════════════════════════════════════
 
 func _ready() -> void:
 	_apply_bg_color(COLOR_BG)
@@ -108,6 +28,17 @@ func _ready() -> void:
 
 	call_deferred("_auto_load_test_assets")
 	call_deferred("_load_settings")
+	call_deferred("_init_db")
+
+	# Phase 6/7: Wire buttons
+	export_json_button.pressed.connect(_export_json)
+	save_button.pressed.connect(_save_project)
+	load_button.pressed.connect(_load_selected_project)
+	download_backup_button.pressed.connect(_export_twiwcs)
+	import_backup_button.pressed.connect(_import_twiwcs)
+	project_name_edit.text_changed.connect(func(t): _current_project_name = t)
+	_current_project_name = project_name_edit.text
+	_project_list_dropdown = %ProjectListDropdown
 
 	# Version label (bottom-right)
 	var dt = Time.get_datetime_dict_from_system()
@@ -123,65 +54,6 @@ func _ready() -> void:
 	version_label.add_theme_font_size_override("font_size", 12)
 	version_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.45))
 	add_child(version_label)
-
-
-# ════════════════════════════════════════════════════════════
-# Phase 1: Camera & Room
-# ════════════════════════════════════════════════════════════
-
-func _fit_camera() -> void:
-	var vp_size := Vector2(sub_viewport.size)
-	if vp_size.x == 0 or vp_size.y == 0:
-		vp_size = Vector2(800, 600)
-	var room_w := ISO_WIDTH
-	var room_h := ISO_HEIGHT + WALL_HEIGHT
-	var zoom_x := vp_size.x * 0.8 / room_w
-	var zoom_y := vp_size.y * 0.8 / room_h
-	var zoom_val := clampf(minf(zoom_x, zoom_y), 0.3, 3.0)
-	var cam := sub_viewport.get_node("Camera2D") as Camera2D
-	cam.zoom = Vector2(zoom_val, zoom_val)
-	cam.position = Vector2(0.0, -175.0)
-
-
-func _draw_room() -> void:
-	var hw := ISO_WIDTH / 2.0
-	var hh := ISO_HEIGHT / 2.0
-	var wh := WALL_HEIGHT
-	floor_poly.polygon = PackedVector2Array([
-		Vector2(0.0, -hh), Vector2(hw, 0.0), Vector2(0.0, hh), Vector2(-hw, 0.0)])
-	wall_back_poly.polygon = PackedVector2Array([
-		Vector2(0.0, -hh), Vector2(hw, 0.0),
-		Vector2(hw, -hh - wh), Vector2(0.0, -hh - hh - wh)])
-	wall_left_poly.polygon = PackedVector2Array([
-		Vector2(-hw, 0.0), Vector2(0.0, -hh),
-		Vector2(0.0, -hh - hh - wh), Vector2(-hw, -hh - wh)])
-	room_outline.clear_points()
-	for p in [Vector2(-hw, 0.0), Vector2(0.0, -hh), Vector2(0.0, -hh - hh - wh),
-			  Vector2(hw, -hh - wh), Vector2(hw, 0.0), Vector2(0.0, hh),
-			  Vector2(-hw, 0.0)]:
-		room_outline.add_point(p)
-
-
-func _apply_bg_color(color: Color) -> void:
-	var existing = canvas_panel.get_theme_stylebox("panel")
-	var style: StyleBoxFlat
-	if existing is StyleBoxFlat:
-		style = existing.duplicate() as StyleBoxFlat
-	else:
-		style = StyleBoxFlat.new()
-	style.bg_color = color
-	canvas_panel.add_theme_stylebox_override("panel", style)
-
-
-func _apply_room_color(color: Color) -> void:
-	room_outline.default_color = color
-	room_outline.width = 2.0
-	var h := color.h
-	var s := color.s
-	var v := color.v
-	floor_poly.color = Color.from_hsv(h, s * 0.55, v * 0.45)
-	wall_back_poly.color = Color.from_hsv(h, s * 0.45, v * 0.35)
-	wall_left_poly.color = Color.from_hsv(h, s * 0.35, v * 0.28)
 
 
 # ════════════════════════════════════════════════════════════
@@ -239,167 +111,6 @@ func _update_undo_redo_buttons() -> void:
 	redo_button.disabled = redo_stack.is_empty()
 
 
-# ════════════════════════════════════════════════════════════
-# Phase 4: Auto-Repeat (+/- hold)
-# ════════════════════════════════════════════════════════════
-
-var _repeat_timer: Timer
-var _repeat_prop: String = ""
-var _repeat_base_step: float = 0.0
-
-
-func _setup_auto_repeat() -> void:
-	_repeat_timer = Timer.new()
-	_repeat_timer.wait_time = 0.15
-	_repeat_timer.one_shot = false
-	_repeat_timer.timeout.connect(_on_repeat_timeout)
-	add_child(_repeat_timer)
-
-
-func _on_repeat_start(prop_name: String, base_step: float) -> void:
-	_repeat_prop = prop_name
-	_repeat_base_step = base_step
-	# Apply one immediate step
-	var multiplier = _get_modifier_multiplier()
-	_apply_transform(prop_name, base_step * multiplier)
-	_repeat_timer.start()
-
-
-func _on_repeat_stop() -> void:
-	_repeat_timer.stop()
-
-
-func _on_repeat_timeout() -> void:
-	var multiplier = _get_modifier_multiplier()
-	_apply_transform(_repeat_prop, _repeat_base_step * multiplier)
-
-
-# ════════════════════════════════════════════════════════════
-# Phase 4: Undo / Redo
-# ════════════════════════════════════════════════════════════
-
-func _push_undo(action: Dictionary) -> void:
-	undo_stack.append(action)
-	if undo_stack.size() > MAX_UNDO:
-		undo_stack.pop_front()
-	redo_stack.clear()
-	_update_undo_redo_buttons()
-
-
-func _undo() -> void:
-	if undo_stack.is_empty():
-		return
-	var action = undo_stack.pop_back()
-	_reverse_action(action)
-	redo_stack.append(action)
-	_update_undo_redo_buttons()
-
-
-func _redo() -> void:
-	if redo_stack.is_empty():
-		return
-	var action = redo_stack.pop_back()
-	_replay_action(action)
-	undo_stack.append(action)
-	_update_undo_redo_buttons()
-
-
-func _reverse_action(action: Dictionary) -> void:
-	match action["type"]:
-		"place":
-			var sprite = action["sprite"]
-			if is_instance_valid(sprite):
-				placed_sprites.erase(sprite)
-				sprite.queue_free()
-			if sprite in _selected_sprites:
-				_selected_sprites.erase(sprite)
-				_free_sprite_indicators(sprite)
-		"delete":
-			var sprite_data = action["sprite_data"]
-			_restore_sprite(sprite_data)
-		"move":
-			var sprite = action["sprite"]
-			if is_instance_valid(sprite):
-				sprite.position = action["old_pos"]
-				sprite.z_index = action["old_z_index"]
-		"scale":
-			var sprite = action["sprite"]
-			if is_instance_valid(sprite):
-				sprite.scale = action["old_scale"]
-		"rotate":
-			var sprite = action["sprite"]
-			if is_instance_valid(sprite):
-				sprite.rotation_degrees = action["old_rotation"]
-		"flip":
-			var sprite = action["sprite"]
-			if is_instance_valid(sprite):
-				sprite.flip_h = action["old_flip"]
-	_refresh_all_indicators()
-	_refresh_inspector_values()
-
-
-func _replay_action(action: Dictionary) -> void:
-	match action["type"]:
-		"place":
-			_restore_sprite(action["sprite_data"])
-		"delete":
-			var sprite = action["sprite"]
-			if is_instance_valid(sprite):
-				placed_sprites.erase(sprite)
-				sprite.queue_free()
-			if sprite in _selected_sprites:
-				_selected_sprites.erase(sprite)
-				_free_sprite_indicators(sprite)
-		"move":
-			var sprite = action["sprite"]
-			if is_instance_valid(sprite):
-				sprite.position = action["new_pos"]
-				sprite.z_index = action["new_z_index"]
-		"scale":
-			var sprite = action["sprite"]
-			if is_instance_valid(sprite):
-				sprite.scale = action["new_scale"]
-		"rotate":
-			var sprite = action["sprite"]
-			if is_instance_valid(sprite):
-				sprite.rotation_degrees = action["new_rotation"]
-		"flip":
-			var sprite = action["sprite"]
-			if is_instance_valid(sprite):
-				sprite.flip_h = action["new_flip"]
-	_refresh_all_indicators()
-	_refresh_inspector_values()
-
-
-func _get_sprite_data(sprite: Sprite2D) -> Dictionary:
-	return {
-		"texture": sprite.texture,
-		"position": sprite.position,
-		"scale": sprite.scale,
-		"rotation": sprite.rotation_degrees,
-		"flip_h": sprite.flip_h,
-		"z_index": sprite.z_index,
-		"set_id": sprite.get_meta("set_id", -1),
-		"locked": sprite.get_meta("locked", false),
-	}
-
-
-func _restore_sprite(data: Dictionary) -> Sprite2D:
-	var sprite := Sprite2D.new()
-	sprite.texture = data["texture"]
-	sprite.position = data["position"]
-	sprite.scale = data["scale"]
-	sprite.rotation_degrees = data["rotation"]
-	sprite.flip_h = data["flip_h"]
-	sprite.z_index = data["z_index"]
-	sprite.set_meta("set_id", data["set_id"])
-	sprite.set_meta("base_scale", Vector2(1.0, 1.0))
-	sprite.set_meta("locked", data.get("locked", false))
-	asset_drop_zone.add_child(sprite)
-	placed_sprites.append(sprite)
-	return sprite
-
-
 func _unhandled_input(event: InputEvent) -> void:
 	# Phase 5: Stop panning if mouse released outside canvas
 	if _is_panning and event is InputEventMouseButton and not event.pressed:
@@ -428,7 +139,6 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 
 
-# ════════════════════════════════════════════════════════════
 # ════════════════════════════════════════════════════════════
 # Phase 4: Selection (multi-select)
 # ════════════════════════════════════════════════════════════
@@ -600,134 +310,54 @@ func _update_sprite_indicator(sprite: Sprite2D) -> void:
 	var tr = pos + Vector2(half.x, -half.y)
 	var br = pos + Vector2(half.x, half.y)
 	var bl = pos + Vector2(-half.x, half.y)
+
+	# Update outline (5 points for closed rect) — must convert to viewport coords for CanvasLayer
 	inds["outline"].points = PackedVector2Array([
-		_world_to_vp(tl), _world_to_vp(tr),
-		_world_to_vp(br), _world_to_vp(bl), _world_to_vp(tl)])
+		_world_to_vp(tl), _world_to_vp(tr), _world_to_vp(br),
+		_world_to_vp(bl), _world_to_vp(tl)])
 	inds["outline"].visible = true
-	var locked = sprite.get_meta("locked", false)
-	inds["outline"].default_color = Color(1.0, 0.6, 0.2, 0.9) if locked else Color(0.4, 0.7, 1.0, 0.9)
+
+	# Update delete icon position
 	var del_vp = _world_to_vp(tr + Vector2(4, -4))
 	inds["del_bg"].position = del_vp
-	inds["del_bg"].visible = true
 	inds["del_bar1"].position = del_vp
-	inds["del_bar1"].visible = true
 	inds["del_bar2"].position = del_vp
+	inds["del_bg"].visible = true
+	inds["del_bar1"].visible = true
 	inds["del_bar2"].visible = true
-	# Lock icon (below delete icon)
+
+	# Update lock icon position (16px below delete icon)
 	var lock_vp = _world_to_vp(tr + Vector2(4, 16))
 	inds["lock_bg"].position = lock_vp
-	inds["lock_bg"].visible = true
 	inds["lock_shackle"].position = lock_vp
-	inds["lock_shackle"].visible = true
 	inds["lock_body"].position = lock_vp
+	inds["lock_bg"].visible = true
+	inds["lock_shackle"].visible = true
 	inds["lock_body"].visible = true
+
+	# Lock color by state
+	var locked = sprite.get_meta("locked", false)
 	var lock_color = Color(1.0, 0.85, 0.2) if locked else Color(0.5, 0.5, 0.5)
 	inds["lock_shackle"].default_color = lock_color
 	inds["lock_body"].color = lock_color
 
 
-func _delete_sprite(sprite: Sprite2D) -> void:
-	if not is_instance_valid(sprite):
-		return
-	_pending_delete_sprite = sprite
-	_delete_dialog.popup_centered()
-
-
-func _delete_selected_sprites() -> void:
-	# Delete all selected (used by keyboard shortcut)
-	if _selected_sprites.is_empty():
-		return
-	_pending_delete_sprite = null
-	_delete_dialog.popup_centered()
-
-
-func _on_delete_confirmed() -> void:
-	if _pending_delete_sprite != null and is_instance_valid(_pending_delete_sprite):
-		# Single sprite delete (from trash icon)
-		var sprite = _pending_delete_sprite
-		var action = {
-			"type": "delete",
-			"sprite": sprite,
-			"sprite_data": _get_sprite_data(sprite),
-		}
-		_push_undo(action)
-		_selected_sprites.erase(sprite)
-		_free_sprite_indicators(sprite)
-		placed_sprites.erase(sprite)
-		sprite.queue_free()
-		_refresh_all_indicators()
-		_update_inspector()
-	else:
-		# Bulk delete all selected
-		var sprites_copy = _selected_sprites.duplicate()
-		for sprite in sprites_copy:
-			if not is_instance_valid(sprite):
-				continue
-			var action = {
-				"type": "delete",
-				"sprite": sprite,
-				"sprite_data": _get_sprite_data(sprite),
-			}
-			_push_undo(action)
-			_free_sprite_indicators(sprite)
-			placed_sprites.erase(sprite)
-			sprite.queue_free()
-		_selected_sprites.clear()
-		_refresh_all_indicators()
-		_update_inspector()
-
-
 func _free_sprite_indicators(sprite: Sprite2D) -> void:
-	if _sprite_indicators.has(sprite):
-		_hide_indicators(sprite)
-
-
-func _find_trash_at_world(world_pos: Vector2) -> Sprite2D:
-	# Returns the selected sprite whose trash icon was clicked, or null
-	for sprite in _selected_sprites:
-		if not is_instance_valid(sprite):
-			continue
-		if not _sprite_indicators.has(sprite):
-			continue
-		var inds = _sprite_indicators[sprite]
-		if not inds["del_bg"].visible:
-			continue
-		var click_vp = _world_to_vp(world_pos)
-		if click_vp.distance_to(inds["del_bg"].position) < 14.0:
-			return sprite
-	return null
-
-
-func _find_lock_at_world(world_pos: Vector2) -> Sprite2D:
-	for sprite in _selected_sprites:
-		if not is_instance_valid(sprite):
-			continue
-		if not _sprite_indicators.has(sprite):
-			continue
-		var inds = _sprite_indicators[sprite]
-		if not inds["lock_bg"].visible:
-			continue
-		var click_vp = _world_to_vp(world_pos)
-		if click_vp.distance_to(inds["lock_bg"].position) < 14.0:
-			return sprite
-	return null
-
-
-func _toggle_lock_for_sprite(sprite: Sprite2D) -> void:
-	var locked = sprite.get_meta("locked", false)
-	sprite.set_meta("locked", not locked)
-	_refresh_inspector_values()
-	_refresh_all_indicators()
-
-
-func _world_to_vp(world_pos: Vector2) -> Vector2:
-	var cam = sub_viewport.get_node("Camera2D") as Camera2D
-	var vp_size = Vector2(sub_viewport.size)
-	return (world_pos - cam.position) * cam.zoom + vp_size * 0.5
+	if not _sprite_indicators.has(sprite):
+		return
+	var inds = _sprite_indicators[sprite]
+	inds["outline"].visible = false
+	inds["del_bg"].visible = false
+	inds["del_bar1"].visible = false
+	inds["del_bar2"].visible = false
+	inds["lock_bg"].visible = false
+	inds["lock_shackle"].visible = false
+	inds["lock_body"].visible = false
+	_indicator_pool.append(inds)
+	_sprite_indicators.erase(sprite)
 
 
 func _hit_test(world_pos: Vector2) -> Sprite2D:
-	# Check in reverse order — top-most (highest z_index) first
 	for i in range(placed_sprites.size() - 1, -1, -1):
 		var sprite = placed_sprites[i]
 		var tex = sprite.texture
@@ -740,45 +370,89 @@ func _hit_test(world_pos: Vector2) -> Sprite2D:
 	return null
 
 
+func _find_trash_at_world(world_pos: Vector2) -> Sprite2D:
+	for sprite in _selected_sprites:
+		if not is_instance_valid(sprite):
+			continue
+		var inds = _sprite_indicators.get(sprite, {})
+		if inds.is_empty():
+			continue
+		var click_vp = _world_to_vp(world_pos)
+		if click_vp.distance_to(inds["del_bg"].position) < 14.0:
+			return sprite
+	return null
+
+
+func _find_lock_at_world(world_pos: Vector2) -> Sprite2D:
+	for sprite in _selected_sprites:
+		if not is_instance_valid(sprite):
+			continue
+		var inds = _sprite_indicators.get(sprite, {})
+		if inds.is_empty():
+			continue
+		var click_vp = _world_to_vp(world_pos)
+		if click_vp.distance_to(inds["lock_bg"].position) < 14.0:
+			return sprite
+	return null
+
+
+func _toggle_lock_for_sprite(sprite: Sprite2D) -> void:
+	var locked = sprite.get_meta("locked", false)
+	sprite.set_meta("locked", not locked)
+	_refresh_all_indicators()
+
+
+func _delete_sprite(sprite: Sprite2D) -> void:
+	_pending_delete_sprite = sprite
+	_delete_dialog.popup_centered()
+
+
+func _on_delete_confirmed() -> void:
+	if _pending_delete_sprite == null or not is_instance_valid(_pending_delete_sprite):
+		return
+	var sprite = _pending_delete_sprite
+	var action = {
+		"type": "delete",
+		"sprite": sprite,
+		"sprite_data": _get_sprite_data(sprite),
+	}
+	_push_undo(action)
+	_selected_sprites.erase(sprite)
+	_free_sprite_indicators(sprite)
+	placed_sprites.erase(sprite)
+	sprite.queue_free()
+	_pending_delete_sprite = null
+	_refresh_all_indicators()
+	_update_inspector()
+
+
 # ════════════════════════════════════════════════════════════
 # Phase 4: Inspector
 # ════════════════════════════════════════════════════════════
 
 func _update_inspector() -> void:
-	if _selected_sprites.is_empty():
+	var sprite = _last_selected()
+	if sprite == null:
+		inspector_content.visible = false
+		var btn = inspector_section.get_node_or_null("HeaderButton")
+		if btn:
+			btn.text = "\u25b6 Object Inspector"
 		return
-
+	inspector_content.visible = true
+	var hdr_btn = inspector_section.get_node_or_null("HeaderButton")
+	if hdr_btn:
+		hdr_btn.text = "\u25bc Object Inspector"
 	# Clear existing rows
 	for child in inspector_content.get_children():
 		child.queue_free()
 	_inspector_rows.clear()
-
-	# Show inspector
-	inspector_content.visible = true
-	var btn = inspector_section.get_node_or_null("HeaderButton")
-	if btn:
-		btn.text = "▼ Object Inspector"
-
-	# Asset label — show count
-	var name_label := Label.new()
-	if _selected_sprites.size() == 1:
-		name_label.text = "Asset: " + str(_selected_sprites[0].get_meta("set_id", "?"))
-	else:
-		name_label.text = "%d assets selected" % _selected_sprites.size()
-	name_label.clip_text = true
-	inspector_content.add_child(name_label)
-
-	var sep := HSeparator.new()
-	inspector_content.add_child(sep)
-
-	# Property rows
+	# Add rows
 	_add_inspector_row("move_x", "Move X", MOVE_STEP)
 	_add_inspector_row("move_y", "Move Y", MOVE_STEP)
 	_add_inspector_row("depth", "Depth Z", DEPTH_STEP)
 	_add_inspector_row("scale", "Scale", SCALE_STEP)
 	_add_inspector_row("rotate", "Rotation", ROTATE_STEP)
-
-	# Flip H
+	# Flip toggle
 	var flip_row := HBoxContainer.new()
 	var flip_label := Label.new()
 	flip_label.text = "Flip H"
@@ -787,7 +461,7 @@ func _update_inspector() -> void:
 	var flip_val := Label.new()
 	flip_val.custom_minimum_size = Vector2(50, 0)
 	flip_val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	flip_val.text = "OFF" if not _last_selected().flip_h else "ON"
+	flip_val.text = "ON" if sprite.flip_h else "OFF"
 	flip_row.add_child(flip_val)
 	var flip_btn := Button.new()
 	flip_btn.text = "Flip"
@@ -795,9 +469,8 @@ func _update_inspector() -> void:
 	flip_btn.pressed.connect(_on_flip_pressed)
 	flip_row.add_child(flip_btn)
 	inspector_content.add_child(flip_row)
-	_inspector_rows["flip"] = {"value_label": flip_val}
-
-	# Phase 5: Lock toggle
+	_inspector_rows["flip"] = {"value_label": flip_val, "button": flip_btn}
+	# Lock toggle
 	var lock_row := HBoxContainer.new()
 	var lock_label := Label.new()
 	lock_label.text = "Lock"
@@ -806,7 +479,7 @@ func _update_inspector() -> void:
 	var lock_val := Label.new()
 	lock_val.custom_minimum_size = Vector2(50, 0)
 	lock_val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lock_val.text = "ON" if _last_selected().get_meta("locked", false) else "OFF"
+	lock_val.text = "ON" if sprite.get_meta("locked", false) else "OFF"
 	lock_row.add_child(lock_val)
 	var lock_btn := Button.new()
 	lock_btn.text = "Lock"
@@ -815,38 +488,32 @@ func _update_inspector() -> void:
 	lock_row.add_child(lock_btn)
 	inspector_content.add_child(lock_row)
 	_inspector_rows["lock"] = {"value_label": lock_val, "button": lock_btn}
-
 	_refresh_inspector_values()
 
 
 func _add_inspector_row(prop_name: String, label_text: String, step: float) -> void:
 	var row := HBoxContainer.new()
-
 	var label := Label.new()
 	label.text = label_text
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(label)
-
 	var minus_btn := Button.new()
 	minus_btn.text = "-"
 	minus_btn.custom_minimum_size = Vector2(28, 0)
 	minus_btn.button_down.connect(_on_repeat_start.bind(prop_name, -step))
 	minus_btn.button_up.connect(_on_repeat_stop)
 	row.add_child(minus_btn)
-
 	var value_label := Label.new()
 	value_label.text = "0.0"
 	value_label.custom_minimum_size = Vector2(50, 0)
 	value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	row.add_child(value_label)
-
 	var plus_btn := Button.new()
 	plus_btn.text = "+"
 	plus_btn.custom_minimum_size = Vector2(28, 0)
 	plus_btn.button_down.connect(_on_repeat_start.bind(prop_name, step))
 	plus_btn.button_up.connect(_on_repeat_stop)
 	row.add_child(plus_btn)
-
 	inspector_content.add_child(row)
 	_inspector_rows[prop_name] = {
 		"label": label, "value_label": value_label,
@@ -854,28 +521,9 @@ func _add_inspector_row(prop_name: String, label_text: String, step: float) -> v
 	}
 
 
-func _on_inspector_minus(prop_name: String, base_step: float) -> void:
-	var multiplier = _get_modifier_multiplier()
-	_apply_transform(prop_name, -base_step * multiplier)
-
-
-func _on_inspector_plus(prop_name: String, base_step: float) -> void:
-	var multiplier = _get_modifier_multiplier()
-	_apply_transform(prop_name, base_step * multiplier)
-
-
-func _get_modifier_multiplier() -> float:
-	if Input.is_key_pressed(KEY_SHIFT):
-		return 10.0
-	elif Input.is_key_pressed(KEY_ALT):
-		return 0.1
-	return 1.0
-
-
 func _apply_transform(prop_name: String, delta: float) -> void:
 	if _selected_sprites.is_empty():
 		return
-
 	for sprite in _selected_sprites:
 		if not is_instance_valid(sprite):
 			continue
@@ -972,7 +620,7 @@ func _refresh_inspector_values() -> void:
 	if _inspector_rows.has("scale"):
 		_inspector_rows["scale"]["value_label"].text = "%.2f" % sprite.scale.x
 	if _inspector_rows.has("rotate"):
-		_inspector_rows["rotate"]["value_label"].text = "%.1f°" % sprite.rotation_degrees
+		_inspector_rows["rotate"]["value_label"].text = "%.1f\u00b0" % sprite.rotation_degrees
 	if _inspector_rows.has("flip"):
 		_inspector_rows["flip"]["value_label"].text = "ON" if sprite.flip_h else "OFF"
 	if _inspector_rows.has("lock"):
@@ -993,13 +641,13 @@ func _connect_section_toggle(section: Control) -> void:
 	var btn: Button = section.get_node_or_null("HeaderButton")
 	var content: Control = section.get_node_or_null("Content")
 	if btn and content:
-		var title := btn.text.replace("▼ ", "").replace("▶ ", "")
+		var title := btn.text.replace("\u25bc ", "").replace("\u25b6 ", "")
 		btn.pressed.connect(_toggle_section.bind(btn, content, title))
 
 
 func _toggle_section(btn: Button, content: Control, title: String) -> void:
 	content.visible = !content.visible
-	btn.text = ("▼ " if content.visible else "▶ ") + title
+	btn.text = ("\u25bc " if content.visible else "\u25b6 ") + title
 
 
 func _get_static_sections() -> Array:
@@ -1041,12 +689,15 @@ func _on_add_assets_pressed() -> void:
 		"png_path": "",
 		"json_path": "",
 		"sheet_texture": null,
+		"sheet_png_bytes": PackedByteArray(),
+		"json_text": "",
 		"frames": [],
 		"textures": [],
 		"section": _create_asset_section(set_id, _set_count),
 	}
 	asset_sets.append(entry)
 	asset_sections_container.add_child(entry["section"])
+
 
 
 func _create_asset_section(set_id: int, number: int) -> VBoxContainer:
@@ -1159,11 +810,13 @@ func _pick_file_desktop(filter: String, callback: Callable) -> void:
 	dialog.popup_centered(Vector2i(800, 600))
 
 
+## BUG FIX 1: Replaced broken JavaScriptBridge.create_callback approach
+## with a polling model — JS stores result in window._twiwcs_file_data,
+## a Timer polls from GDScript until the data arrives.
 func _pick_file_web(accept: String, is_png: bool, set_id: int) -> void:
 	if not JavaScriptBridge:
 		return
-	var cb: Callable = _load_png_from_web.bind(set_id) if is_png else _load_json_from_web.bind(set_id)
-	var js_cb = JavaScriptBridge.create_callback(cb)
+	JavaScriptBridge.eval("window._twiwcs_file_data = null")
 	JavaScriptBridge.eval("""
 	(function() {
 		var input = document.createElement('input');
@@ -1175,12 +828,77 @@ func _pick_file_web(accept: String, is_png: bool, set_id: int) -> void:
 			var file = e.target.files[0];
 			if (!file) { document.body.removeChild(input); return; }
 			var reader = new FileReader();
-			reader.onload = function(ev) { %s(ev.target.result); document.body.removeChild(input); };
+			reader.onload = function(ev) {
+				if (%s) {
+					var bytes = new Uint8Array(ev.target.result);
+					var binary = '';
+					for (var i = 0; i < bytes.byteLength; i++) {
+						binary += String.fromCharCode(bytes[i]);
+					}
+					window._twiwcs_file_data = {type: 'png', data: window.btoa(binary)};
+				} else {
+					window._twiwcs_file_data = {type: 'json', data: ev.target.result};
+				}
+				document.body.removeChild(input);
+			};
 			reader.readAs%s(file);
 		};
 		input.click();
 	})();
-	""" % [accept, js_cb, "ArrayBuffer" if is_png else "Text"])
+	""" % [accept, "true" if is_png else "false", "ArrayBuffer" if is_png else "Text"])
+	var poll_timer = Timer.new()
+	poll_timer.wait_time = 0.1
+	poll_timer.one_shot = false
+	add_child(poll_timer)
+	poll_timer.timeout.connect(_poll_web_file_data.bind(set_id, poll_timer))
+	poll_timer.start()
+
+
+func _poll_web_file_data(set_id: int, timer: Timer) -> void:
+	if not JavaScriptBridge:
+		timer.stop()
+		timer.queue_free()
+		return
+	var raw = JavaScriptBridge.eval("JSON.stringify(window._twiwcs_file_data)")
+	if raw == null or raw == "null":
+		return
+	timer.stop()
+	timer.queue_free()
+	JavaScriptBridge.eval("window._twiwcs_file_data = null")
+	var data = JSON.parse_string(str(raw))
+	if data == null:
+		return
+	var file_type = data.get("type", "")
+	var file_data = data.get("data", "")
+	if file_type == "png" and file_data != "":
+		_process_web_png(set_id, file_data)
+	elif file_type == "json" and file_data != "":
+		_process_web_json(set_id, file_data)
+
+
+func _process_web_png(set_id: int, b64: String) -> void:
+	var byte_array = Marshalls.base64_to_raw(b64)
+	if byte_array.size() == 0:
+		return
+	var image := Image.new()
+	if image.load_png_from_buffer(byte_array) == OK:
+		var s = _find_set(set_id)
+		if not s.is_empty():
+			s["sheet_texture"] = ImageTexture.create_from_image(image)
+			s["sheet_png_bytes"] = byte_array
+			s["png_path"] = "web_upload.png"
+			_update_set_ui(set_id)
+			_try_build_set(set_id)
+
+
+func _process_web_json(set_id: int, text: String) -> void:
+	_parse_json_for_set(set_id, text)
+	var s = _find_set(set_id)
+	if not s.is_empty():
+		s["json_text"] = text
+		s["json_path"] = "web_upload.json"
+		_update_set_ui(set_id)
+		_try_build_set(set_id)
 
 
 func _load_png_for_set(set_id: int, path: String) -> void:
@@ -1190,6 +908,7 @@ func _load_png_for_set(set_id: int, path: String) -> void:
 	var image := Image.new()
 	if image.load(path) == OK:
 		s["sheet_texture"] = ImageTexture.create_from_image(image)
+		s["sheet_png_bytes"] = image.save_png_to_buffer()
 		s["png_path"] = path.get_file()
 		_update_set_ui(set_id)
 		_try_build_set(set_id)
@@ -1201,49 +920,13 @@ func _load_json_for_set(set_id: int, path: String) -> void:
 		return
 	var file = FileAccess.open(path, FileAccess.READ)
 	if file:
-		_parse_json_for_set(set_id, file.get_as_text())
+		var text = file.get_as_text()
+		_parse_json_for_set(set_id, text)
+		s["json_text"] = text
 		s["json_path"] = path.get_file()
 		file.close()
 		_update_set_ui(set_id)
 		_try_build_set(set_id)
-
-
-func _load_png_from_web(set_id: int, args: Array) -> void:
-	if args.size() == 0:
-		return
-	var byte_array: PackedByteArray
-	if args[0] is PackedByteArray:
-		byte_array = args[0]
-	else:
-		var raw = JavaScriptBridge.eval("""
-			(function() {
-				if (!window._hermes_png_buffer) return [];
-				var b = window._hermes_png_buffer;
-				var arr = [];
-				for (var i = 0; i < b.byteLength; i++) arr.push(b[i]);
-				return arr;
-			})();
-		""")
-		if raw is Array:
-			byte_array = PackedByteArray(raw)
-	var image := Image.new()
-	if image.load_png_from_buffer(byte_array) == OK:
-		var s = _find_set(set_id)
-		if not s.is_empty():
-			s["sheet_texture"] = ImageTexture.create_from_image(image)
-			s["png_path"] = "web_upload.png"
-			_update_set_ui(set_id)
-			_try_build_set(set_id)
-
-
-func _load_json_from_web(set_id: int, args: Array) -> void:
-	if args.size() > 0:
-		_parse_json_for_set(set_id, str(args[0]))
-		var s = _find_set(set_id)
-		if not s.is_empty():
-			s["json_path"] = "web_upload.json"
-			_update_set_ui(set_id)
-			_try_build_set(set_id)
 
 
 func _parse_json_for_set(set_id: int, text: String) -> void:
@@ -1487,82 +1170,8 @@ func _on_canvas_gui_input(event: InputEvent) -> void:
 
 
 # ════════════════════════════════════════════════════════════
-# Phase 5: Canvas Zoom & Pan
+# Phase 5: Place Asset
 # ════════════════════════════════════════════════════════════
-
-func _apply_zoom(delta: float, container_pos: Vector2) -> void:
-	var cam := sub_viewport.get_node("Camera2D") as Camera2D
-	var vp_size = Vector2(sub_viewport.size)
-	var container_size = Vector2(sub_viewport_container.size)
-	if container_size.x == 0 or container_size.y == 0:
-		return
-	# World position under cursor before zoom
-	var vp_pos = container_pos * (vp_size / container_size)
-	var world_before = (vp_pos - vp_size * 0.5) / cam.zoom + cam.position
-	# Apply new zoom
-	var old_zoom = cam.zoom.x
-	var new_zoom = clampf(old_zoom + delta, ZOOM_MIN, ZOOM_MAX)
-	cam.zoom = Vector2(new_zoom, new_zoom)
-	# Adjust camera so same world point stays under cursor
-	var world_after = (vp_pos - vp_size * 0.5) / cam.zoom + cam.position
-	cam.position += world_before - world_after
-
-
-func _do_pan(relative: Vector2) -> void:
-	var cam := sub_viewport.get_node("Camera2D") as Camera2D
-	var vp_size = Vector2(sub_viewport.size)
-	var container_size = Vector2(sub_viewport_container.size)
-	if container_size.x == 0 or container_size.y == 0:
-		return
-	var scale_factor = vp_size / container_size
-	cam.position -= (relative * scale_factor) / cam.zoom
-
-
-# ════════════════════════════════════════════════════════════
-# Phase 5: Settings Persistence (localStorage)
-# ════════════════════════════════════════════════════════════
-
-func _save_settings() -> void:
-	if not JavaScriptBridge:
-		return
-	var s = {
-		"bg": [canvas_bg_color.color.r, canvas_bg_color.color.g, canvas_bg_color.color.b],
-		"room": [room_color_picker.color.r, room_color_picker.color.g, room_color_picker.color.b],
-	}
-	var j = JSON.stringify(s)
-	JavaScriptBridge.eval("localStorage.setItem('%s','%s')" % [SETTINGS_KEY, j])
-
-
-func _load_settings() -> void:
-	if not JavaScriptBridge:
-		return
-	var raw = JavaScriptBridge.eval("localStorage.getItem('%s')" % SETTINGS_KEY)
-	if raw == null:
-		return
-	var p = JSON.parse_string(str(raw))
-	if p == null:
-		return
-	if p.has("bg"):
-		var a = p["bg"]
-		var c = Color(a[0], a[1], a[2])
-		canvas_bg_color.color = c
-		_apply_bg_color(c)
-	if p.has("room"):
-		var a = p["room"]
-		var c = Color(a[0], a[1], a[2])
-		room_color_picker.color = c
-		_apply_room_color(c)
-
-
-func _container_to_world(container_pos: Vector2) -> Vector2:
-	var vp_size := Vector2(sub_viewport.size)
-	var container_size := Vector2(sub_viewport_container.size)
-	if container_size.x == 0 or container_size.y == 0:
-		return Vector2.ZERO
-	var vp_pos := container_pos * (vp_size / container_size)
-	var cam := sub_viewport.get_node("Camera2D") as Camera2D
-	return (vp_pos - vp_size * 0.5) / cam.zoom + cam.position
-
 
 func _place_asset_at_click(container_pos: Vector2) -> void:
 	var world_pos = _container_to_world(container_pos)
@@ -1576,12 +1185,19 @@ func _place_asset(world_pos: Vector2) -> void:
 	sprite.z_index = int(world_pos.y) + 1000
 
 	var set_id := -1
+	var asset_id := ""
+	var frame_idx := -1
 	for s in asset_sets:
 		if active_asset_texture in s["textures"]:
 			set_id = s["id"]
+			frame_idx = s["textures"].find(active_asset_texture)
+			if frame_idx >= 0 and frame_idx < s["frames"].size():
+				asset_id = s["frames"][frame_idx]["filename"]
 			break
 
 	sprite.set_meta("set_id", set_id)
+	sprite.set_meta("asset_id", asset_id)
+	sprite.set_meta("frame_index", frame_idx)
 	sprite.set_meta("base_scale", Vector2(1.0, 1.0))
 
 	asset_drop_zone.add_child(sprite)
@@ -1639,20 +1255,364 @@ func _hide_preview() -> void:
 # Auto-load test assets
 # ════════════════════════════════════════════════════════════
 
+## BUG FIX 2: Use load() + get_image() instead of Image.new().load()
+## which fails on HTML5 exports.
 func _auto_load_test_assets() -> void:
 	_on_add_assets_pressed()
 	var set_id = asset_sets[0]["id"]
 
 	var tex = load("res://assets/sprites/steam-interior-items3.png") as Texture2D
 	if tex:
-		asset_sets[0]["sheet_texture"] = tex
+		var image = tex.get_image()
+		asset_sets[0]["sheet_texture"] = ImageTexture.create_from_image(image)
+		asset_sets[0]["sheet_png_bytes"] = image.save_png_to_buffer()
 		asset_sets[0]["png_path"] = "steam-interior-items3.png"
 
 	var file = FileAccess.open("res://assets/sprites/steam-interior-items3_tp-array.json", FileAccess.READ)
 	if file:
-		_parse_json_for_set(set_id, file.get_as_text())
+		var text = file.get_as_text()
+		_parse_json_for_set(set_id, text)
+		asset_sets[0]["json_text"] = text
 		asset_sets[0]["json_path"] = "steam-interior-items3_tp-array.json"
 		file.close()
 
 	_update_set_ui(set_id)
 	_try_build_set(set_id)
+
+
+# ════════════════════════════════════════════════════════════
+# Phase 6: JSON Layout Export
+# ════════════════════════════════════════════════════════════
+
+func _serialize_layout() -> String:
+	var objects := []
+	for sprite in placed_sprites:
+		if not is_instance_valid(sprite):
+			continue
+		var pos = sprite.position
+		var sc = sprite.scale
+		objects.append({
+			"asset_id": sprite.get_meta("asset_id", ""),
+			"set_id": sprite.get_meta("set_id", -1),
+			"position": {"x": pos.x, "y": pos.y},
+			"scale": {"x": sc.x, "y": sc.y},
+			"rotation": sprite.rotation_degrees,
+			"flip_h": sprite.flip_h,
+			"z_index": sprite.z_index,
+			"locked": sprite.get_meta("locked", false),
+		})
+	return JSON.stringify({"layout_version": "1.0", "objects": objects})
+
+
+func _export_json() -> void:
+	var json_str = _serialize_layout()
+	if OS.has_feature("web"):
+		if JavaScriptBridge:
+			JavaScriptBridge.eval("""(function() {
+				var s = %s;
+				var blob = new Blob([s], {type: 'application/json'});
+				var url = URL.createObjectURL(blob);
+				var a = document.createElement('a');
+				a.href = url;
+				a.download = 'map_layout.json';
+				document.body.appendChild(a);
+				a.click();
+				document.body.removeChild(a);
+				URL.revokeObjectURL(url);
+			})();""" % json_str)
+	else:
+		var dialog := FileDialog.new()
+		dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+		dialog.access = FileDialog.ACCESS_FILESYSTEM
+		dialog.filters = PackedStringArray(["*.json;JSON Data"])
+		dialog.file_selected.connect(func(path): _write_json_file(path, json_str); dialog.queue_free())
+		dialog.canceled.connect(func(): dialog.queue_free())
+		add_child(dialog)
+		dialog.popup_centered(Vector2i(800, 600))
+
+
+func _write_json_file(path: String, json_str: String) -> void:
+	var file = FileAccess.open(path, FileAccess.WRITE)
+	if file:
+		file.store_string(json_str)
+		file.close()
+
+
+# ════════════════════════════════════════════════════════════
+# Phase 7: IndexedDB Persistence
+# ════════════════════════════════════════════════════════════
+
+func _init_db() -> void:
+	if not JavaScriptBridge:
+		return
+	var f = FileAccess.open("res://scripts/twiwcs_db.js", FileAccess.READ)
+	if f:
+		var js_code = f.get_as_text()
+		f.close()
+		JavaScriptBridge.eval(js_code)
+		JavaScriptBridge.eval("window._twiwcs_db_init_result = null; TWIWCS_DB.init(function(d) { window._twiwcs_db_init_result = d; })")
+		_poll_db_result("_twiwcs_db_init_result", _on_db_init_complete)
+
+
+func _on_db_init_complete(json_str: String) -> void:
+	var result = JSON.parse_string(json_str)
+	if result and result.get("success", false):
+		_js_db_ready = true
+		_refresh_project_list()
+
+
+
+func _poll_db_result(var_name: String, callback: Callable, interval: float = 0.1) -> void:
+	var timer = Timer.new()
+	timer.wait_time = interval
+	timer.one_shot = false
+	timer.timeout.connect(func(): _poll_db_tick(var_name, callback, timer))
+	add_child(timer)
+	timer.start()
+
+
+func _poll_db_tick(var_name: String, callback: Callable, timer: Timer) -> void:
+	var raw = JavaScriptBridge.eval("window['%s']" % var_name)
+	if raw == null or raw == "null":
+		return
+	timer.stop()
+	timer.queue_free()
+	JavaScriptBridge.eval("window['%s'] = null" % var_name)
+	callback.call(str(raw))
+
+
+func _serialize_asset_sets_for_save() -> String:
+	var sets_data := []
+	for s in asset_sets:
+		var png_b64 = Marshalls.raw_to_base64(s["sheet_png_bytes"]) if s["sheet_png_bytes"].size() > 0 else ""
+		sets_data.append({
+			"set_id": s["id"],
+			"filename": s["png_path"],
+			"png_base64": png_b64,
+			"json_metadata": s["json_text"],
+		})
+	return JSON.stringify(sets_data)
+
+
+func _save_project() -> void:
+	if not _js_db_ready or _current_project_name.is_empty():
+		return
+	var layout_json = _serialize_layout()
+	var assets_json = _serialize_asset_sets_for_save()
+	# Store data in window to avoid quote escaping issues in eval
+	JavaScriptBridge.eval("window._twiwcs_savelayout = %s" % layout_json)
+	JavaScriptBridge.eval("window._twiwcs_saveassets = %s" % assets_json)
+	JavaScriptBridge.eval("""window._twiwcs_save_result = null; TWIWCS_DB.saveProject(
+		'%s',
+		JSON.stringify(window._twiwcs_savelayout),
+		JSON.stringify(window._twiwcs_saveassets),
+		function(d) { window._twiwcs_save_result = d; })""" % _current_project_name.replace("\'", "\\\'"))
+	_poll_db_result("_twiwcs_save_result", _on_db_save_complete)
+
+
+func _on_db_save_complete(json_str: String) -> void:
+	var result = JSON.parse_string(json_str)
+	if result and result.get("success", false):
+		print("Project saved: ", _current_project_name)
+	else:
+		push_warning("Save failed: ", result.get("error", "unknown"))
+
+
+func _refresh_project_list() -> void:
+	if not _js_db_ready or not _project_list_dropdown:
+		return
+	JavaScriptBridge.eval("window._twiwcs_list_result = null; TWIWCS_DB.loadProjectList(function(d) { window._twiwcs_list_result = d; })")
+	_poll_db_result("_twiwcs_list_result", _on_db_list_complete)
+
+
+func _on_db_list_complete(json_str: String) -> void:
+	var result = JSON.parse_string(json_str)
+	if result == null or not result.get("success", false):
+		return
+	_project_list_dropdown.clear()
+	_project_list_dropdown.add_item("-- Select Project --")
+	var names = result.get("names", [])
+	for n in names:
+		_project_list_dropdown.add_item(str(n))
+
+
+func _load_selected_project() -> void:
+	if not _js_db_ready or not _project_list_dropdown:
+		return
+	var idx = _project_list_dropdown.get_item_index(_project_list_dropdown.get_selected())
+	if idx <= 0:
+		return
+	var name = _project_list_dropdown.get_item_text(idx)
+	_current_project_name = name
+	JavaScriptBridge.eval("""window._twiwcs_load_result = null; TWIWCS_DB.loadProject('%s', function(d) { window._twiwcs_load_result = d; })""" % name.replace("'", "\\'"))
+	_poll_db_result("_twiwcs_load_result", _on_db_load_complete)
+
+
+func _on_db_load_complete(json_str: String) -> void:
+	var result = JSON.parse_string(json_str)
+	if result == null or not result.get("success", false):
+		push_warning("Load failed: ", result.get("error", "unknown") if result else "parse error")
+		return
+	# Clear current scene
+	_clear_scene()
+	# Restore asset sets
+	var assets_json = result.get("assets_json", "[]")
+	_deserialize_asset_sets(assets_json)
+	# Restore placed sprites
+	var layout_json = result.get("layout_json", "{}")
+	_deserialize_layout(layout_json)
+	print("Project loaded: ", _current_project_name)
+
+
+func _clear_scene() -> void:
+	# Remove all placed sprites
+	for sprite in placed_sprites:
+		if is_instance_valid(sprite):
+			sprite.queue_free()
+	placed_sprites.clear()
+	_selected_sprites.clear()
+	undo_stack.clear()
+	redo_stack.clear()
+	_free_all_indicators()
+	# Remove all asset set sections
+	for child in asset_sections_container.get_children():
+		child.queue_free()
+	asset_sets.clear()
+	_next_set_id = 0
+	_set_count = 0
+	active_asset_index = -1
+	active_asset_texture = null
+
+
+func _deserialize_asset_sets(data_json: String) -> void:
+	var sets_data = JSON.parse_string(data_json)
+	if sets_data == null or not (sets_data is Array):
+		return
+	for entry in sets_data:
+		_next_set_id += 1
+		_set_count += 1
+		var set_id = _next_set_id
+		var s = {
+			"id": set_id,
+			"png_path": entry.get("filename", ""),
+			"json_path": "",
+			"sheet_texture": null,
+			"sheet_png_bytes": PackedByteArray(),
+			"json_text": entry.get("json_metadata", ""),
+			"frames": [],
+			"textures": [],
+			"section": _create_asset_section(set_id, _set_count),
+		}
+		# Decode PNG from base64
+		var b64 = entry.get("png_base64", "")
+		if b64 != "":
+			var png_bytes = Marshalls.base64_to_raw(b64)
+			if png_bytes.size() > 0:
+				s["sheet_png_bytes"] = png_bytes
+				var image := Image.new()
+				if image.load_png_from_buffer(png_bytes) == OK:
+					s["sheet_texture"] = ImageTexture.create_from_image(image)
+			# Parse JSON metadata
+			var meta_text = entry.get("json_metadata", "")
+			if meta_text != "":
+				_parse_json_for_set(set_id, meta_text)
+		asset_sets.append(s)
+		asset_sections_container.add_child(s["section"])
+		_update_set_ui(set_id)
+		_try_build_set(set_id)
+
+
+func _deserialize_layout(layout_json: String) -> void:
+	var data = JSON.parse_string(layout_json)
+	if data == null:
+		return
+	var objects = data.get("objects", [])
+	for obj in objects:
+		var set_id = obj.get("set_id", -1)
+		var asset_id = obj.get("asset_id", "")
+		var s = _find_set(set_id)
+		if s.is_empty():
+			continue
+		# Find the matching texture by asset_id
+		var tex: AtlasTexture = null
+		for i in range(s["frames"].size()):
+			if s["frames"][i]["filename"] == asset_id:
+				if i < s["textures"].size():
+					tex = s["textures"][i]
+				break
+		if tex == null:
+			continue
+		var sprite := Sprite2D.new()
+		sprite.texture = tex
+		var pos = obj.get("position", {})
+		sprite.position = Vector2(pos.get("x", 0), pos.get("y", 0))
+		var sc = obj.get("scale", {})
+		sprite.scale = Vector2(sc.get("x", 1.0), sc.get("y", 1.0))
+		sprite.rotation_degrees = obj.get("rotation", 0.0)
+		sprite.flip_h = obj.get("flip_h", false)
+		sprite.z_index = obj.get("z_index", int(sprite.position.y) + 1000)
+		sprite.set_meta("set_id", set_id)
+		sprite.set_meta("asset_id", asset_id)
+		sprite.set_meta("base_scale", Vector2(1.0, 1.0))
+		sprite.set_meta("locked", obj.get("locked", false))
+		asset_drop_zone.add_child(sprite)
+		placed_sprites.append(sprite)
+
+
+# ════════════════════════════════════════════════════════════
+# Phase 7: .twiwcs Portable Backup
+# ════════════════════════════════════════════════════════════
+
+func _export_twiwcs() -> void:
+	var layout_json = _serialize_layout()
+	var assets_json = _serialize_asset_sets_for_save()
+	# Build the .twiwcs package
+	var package = {
+		"twiwcs_version": "1.0",
+		"layout": JSON.parse_string(layout_json),
+		"asset_sets": JSON.parse_string(assets_json),
+	}
+	var package_json = JSON.stringify(package)
+	var project_name = _current_project_name if not _current_project_name.is_empty() else "project"
+	if OS.has_feature("web"):
+		if JavaScriptBridge:
+			JavaScriptBridge.eval("window._twiwcs_exportdata = %s" % package_json)
+			JavaScriptBridge.eval("""TWIWCS_DB.exportTwiwcs('%s', JSON.stringify(window._twiwcs_exportdata))""" % project_name.replace("'", "\\'"))
+	else:
+		var dialog := FileDialog.new()
+		dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+		dialog.access = FileDialog.ACCESS_FILESYSTEM
+		dialog.filters = PackedStringArray(["*.twiwcs;TWIWCS Backup"])
+		dialog.file_selected.connect(func(path): _write_json_file(path, package_json); dialog.queue_free())
+		dialog.canceled.connect(func(): dialog.queue_free())
+		add_child(dialog)
+		dialog.popup_centered(Vector2i(800, 600))
+
+
+func _import_twiwcs() -> void:
+	if not JavaScriptBridge:
+		return
+	JavaScriptBridge.eval("window._twiwcs_import_result = null; TWIWCS_DB.importTwiwcs(function(d) { window._twiwcs_import_result = d; })")
+	_poll_db_result("_twiwcs_import_result", _on_twiwcs_import_complete)
+
+
+func _on_twiwcs_import_complete(json_str: String) -> void:
+	var raw = json_str
+	if raw.begins_with("{") and raw.contains("success"):
+		var err_result = JSON.parse_string(raw)
+		if err_result and not err_result.get("success", true):
+			push_warning("Import failed: ", err_result.get("error", "unknown"))
+			return
+	var package = JSON.parse_string(raw)
+	if package == null:
+		push_warning("Failed to parse .twiwcs file")
+		return
+	# Clear current scene
+	_clear_scene()
+	# Restore asset sets
+	var asset_sets_data = package.get("asset_sets", [])
+	_deserialize_asset_sets(JSON.stringify(asset_sets_data))
+	# Restore layout
+	var layout_data = package.get("layout", {})
+	_deserialize_layout(JSON.stringify(layout_data))
+	print("Import complete")

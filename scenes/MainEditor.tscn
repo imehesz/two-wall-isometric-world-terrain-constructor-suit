@@ -1,19 +1,48 @@
-[gd_scene load_steps=5 format=3 uid="uid://rnayxcg51itq"]
+[gd_scene load_steps=15 format=3 uid="uid://rnayxcg51itq"]
 
 [ext_resource type="Script" uid="uid://cwjsx3l3cdkfs" path="res://scripts/MainEditor.gd" id="1_script"]
+[ext_resource type="Texture2D" uid="uid://p4evcaqrfeg3" path="res://assets/icons/icon_export.png" id="icon_export"]
+[ext_resource type="Texture2D" uid="uid://d00j5dhhvvuoe" path="res://assets/icons/icon_import.png" id="icon_import"]
+[ext_resource type="Texture2D" uid="uid://dquqrs6jlgb0h" path="res://assets/icons/icon_insert.png" id="icon_insert"]
+[ext_resource type="Texture2D" uid="uid://cyna6dxl77cge" path="res://assets/icons/icon_load.png" id="icon_load"]
+[ext_resource type="Texture2D" uid="uid://qoiiew2d045a" path="res://assets/icons/icon_redo.png" id="icon_redo"]
+[ext_resource type="Texture2D" uid="uid://3ehkeyb8d0ja" path="res://assets/icons/icon_save.png" id="icon_save"]
+[ext_resource type="Texture2D" uid="uid://c5r72kkcba5ex" path="res://assets/icons/icon_select.png" id="icon_select"]
+[ext_resource type="Texture2D" uid="uid://b6nmug1ga4ogs" path="res://assets/icons/icon_settings.png" id="icon_settings"]
+[ext_resource type="Texture2D" uid="uid://cbblgtc7fg044" path="res://assets/icons/icon_undo.png" id="icon_undo"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_canvas"]
 bg_color = Color(0.12, 0.11, 0.14, 1)
 
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
+content_margin_left = 4.0
+content_margin_top = 2.0
+content_margin_right = 4.0
+content_margin_bottom = 2.0
+bg_color = Color(0.78, 0.78, 0.78, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
 [sub_resource type="Theme" id="Theme_panel"]
 default_font_size = 10
+Button/colors/font_color = Color(0.05, 0.05, 0.05, 1)
+Button/colors/font_hover_color = Color(0.05, 0.05, 0.05, 1)
+Button/colors/font_pressed_color = Color(0.3, 0.3, 0.3, 1)
+Button/constants/icon_max_width = 20
+Button/constants/icon_width = 20
+Button/styles/focus = SubResource("StyleBoxFlat_btn_hover")
+Button/styles/hover = SubResource("StyleBoxFlat_btn_hover")
+Button/styles/normal = SubResource("StyleBoxFlat_btn_hover")
+Label/colors/font_color = Color(0.05, 0.05, 0.05, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 content_margin_left = 4.0
 content_margin_top = 4.0
 content_margin_right = 4.0
 content_margin_bottom = 4.0
-bg_color = Color(0.12, 0.11, 0.14, 1)
+bg_color = Color(0.88, 0.88, 0.88, 1)
 
 [node name="MainEditor" type="Control"]
 layout_mode = 3
@@ -123,28 +152,32 @@ theme_override_constants/separation = 4
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "✚ Insert"
+tooltip_text = "Insert sprite"
+icon = ExtResource("icon_insert")
 flat = true
 
 [node name="SelectButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/Toolbar"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "➤ Select"
+tooltip_text = "Select sprite"
+icon = ExtResource("icon_select")
 flat = true
 
 [node name="UndoButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/Toolbar"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(32, 0)
 layout_mode = 2
-text = "↩"
+tooltip_text = "Undo"
+icon = ExtResource("icon_undo")
 flat = true
 
 [node name="RedoButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/Toolbar"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(32, 0)
 layout_mode = 2
-text = "↪"
+tooltip_text = "Redo"
+icon = ExtResource("icon_redo")
 flat = true
 
 [node name="SaveLoadSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
@@ -154,6 +187,7 @@ size_flags_horizontal = 3
 [node name="HeaderButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection"]
 layout_mode = 2
 size_flags_horizontal = 3
+tooltip_text = "Save / Load"
 text = "▼ Save / Load"
 flat = true
 clip_text = true
@@ -169,7 +203,8 @@ layout_mode = 2
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "💾 Save"
+tooltip_text = "Save project"
+icon = ExtResource("icon_save")
 
 [node name="BackupRow" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content"]
 layout_mode = 2
@@ -178,13 +213,15 @@ layout_mode = 2
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "📦 Download Backup"
+tooltip_text = "Download backup"
+icon = ExtResource("icon_load")
 
 [node name="ImportBackupButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content/BackupRow"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "📥 Import Backup"
+tooltip_text = "Import backup"
+icon = ExtResource("icon_import")
 
 [node name="ObjectInspectorSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
 unique_name_in_owner = true
@@ -194,6 +231,7 @@ size_flags_horizontal = 3
 [node name="HeaderButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ObjectInspectorSection"]
 layout_mode = 2
 size_flags_horizontal = 3
+tooltip_text = "Object Inspector"
 text = "▶ Object Inspector"
 flat = true
 clip_text = true
@@ -206,6 +244,7 @@ size_flags_horizontal = 3
 [node name="AddAssetsButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
 unique_name_in_owner = true
 layout_mode = 2
+tooltip_text = "Add sprite sheet"
 text = "Add Assets +"
 
 [node name="AssetSectionsContainer" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
@@ -221,7 +260,8 @@ size_flags_horizontal = 3
 [node name="HeaderButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/GlobalSettingsSection"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "▼ Global Settings"
+tooltip_text = "Global Settings"
+icon = ExtResource("icon_settings")
 flat = true
 clip_text = true
 
@@ -266,6 +306,7 @@ size_flags_horizontal = 3
 [node name="HeaderButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ExporterSection"]
 layout_mode = 2
 size_flags_horizontal = 3
+tooltip_text = "Exporter"
 text = "▶ Exporter"
 flat = true
 clip_text = true
@@ -278,4 +319,5 @@ size_flags_horizontal = 3
 [node name="ExportJSONButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ExporterSection/Content"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "⬇ Export JSON Layout"
+tooltip_text = "Export JSON layout"
+icon = ExtResource("icon_export")

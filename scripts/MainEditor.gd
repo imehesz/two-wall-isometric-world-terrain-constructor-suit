@@ -737,7 +737,9 @@ func _create_asset_section(set_id: int, number: int) -> VBoxContainer:
 	png_row.add_child(png_btn)
 	var png_trash := Button.new()
 	png_trash.name = "PngTrash"
-	png_trash.text = "🗑"
+	png_trash.text = ""
+	png_trash.icon = load("res://assets/icons/icon_trash.png")
+	png_trash.tooltip_text = "Remove sprite sheet"
 	png_trash.custom_minimum_size = Vector2(24, 0)
 	png_trash.visible = false
 	png_trash.pressed.connect(_on_set_remove_pressed.bind(set_id))
@@ -761,7 +763,9 @@ func _create_asset_section(set_id: int, number: int) -> VBoxContainer:
 	json_row.add_child(json_btn)
 	var json_trash := Button.new()
 	json_trash.name = "JsonTrash"
-	json_trash.text = "🗑"
+	json_trash.text = ""
+	json_trash.icon = load("res://assets/icons/icon_trash.png")
+	json_trash.tooltip_text = "Remove JSON data"
 	json_trash.custom_minimum_size = Vector2(24, 0)
 	json_trash.visible = false
 	json_trash.pressed.connect(_on_set_remove_pressed.bind(set_id))

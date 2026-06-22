@@ -32,13 +32,11 @@ func _ready() -> void:
 
 	# Phase 6/7: Wire buttons
 	export_json_button.pressed.connect(_export_json)
-	save_button.pressed.connect(_save_project)
-	load_button.pressed.connect(_load_selected_project)
+	save_button.pressed.connect(_on_save_pressed)
 	download_backup_button.pressed.connect(_export_twiwcs)
 	import_backup_button.pressed.connect(_import_twiwcs)
-	project_name_edit.text_changed.connect(func(t): _current_project_name = t)
-	_current_project_name = project_name_edit.text
-	_project_list_dropdown = %ProjectListDropdown
+
+	_setup_save_load_dialogs()
 
 	# Version label (bottom-right)
 	var dt = Time.get_datetime_dict_from_system()
@@ -1361,6 +1359,7 @@ window.TWIWCS_DB = (function () {
 	"use strict";
 	const DB_NAME = "twiwcs_projects";
 	const DB_VERSION = 1;
+	const PROJECT_KEY = "current";
 	let _db = null;
 	function _ok(cb, data) { if (cb) cb(JSON.stringify(data)); }
 	function _err(cb, msg) { if (cb) cb(JSON.stringify({ success: false, error: String(msg) })); }
@@ -1380,14 +1379,21 @@ window.TWIWCS_DB = (function () {
 		req.onsuccess = function (e) { _db = e.target.result; _ok(callback, { success: true }); };
 		req.onerror = function (e) { _err(callback, e.target.error ? e.target.error.message : "open failed"); };
 	}
-	function saveProject(name, layoutJson, assetsJson, callback) {
+	function hasSavedProject(callback) {
+		if (!_db) { _err(callback, "DB not initialized"); return; }
+		var tx = _db.transaction("projects", "readonly");
+		var req = tx.objectStore("projects").get(PROJECT_KEY);
+		req.onsuccess = function (e) { _ok(callback, { success: true, exists: !!e.target.result }); };
+		req.onerror = function (e) { _err(callback, e.target.error ? e.target.error.message : "check failed"); };
+	}
+	function saveProject(layoutJson, assetsJson, callback) {
 		if (!_db) { _err(callback, "DB not initialized"); return; }
 		var tx = _db.transaction(["projects", "assets"], "readwrite");
 		var projStore = tx.objectStore("projects");
 		var assetStore = tx.objectStore("assets");
-		projStore.put({ name: name, layout_json: layoutJson });
+		projStore.put({ name: PROJECT_KEY, layout_json: layoutJson });
 		var idx = assetStore.index("project_name");
-		var range = IDBKeyRange.only(name);
+		var range = IDBKeyRange.only(PROJECT_KEY);
 		var oldKeys = [];
 		var cursorReq = idx.openCursor(range);
 		cursorReq.onsuccess = function (e) {
@@ -1398,8 +1404,8 @@ window.TWIWCS_DB = (function () {
 				var assets = JSON.parse(assetsJson);
 				for (var j = 0; j < assets.length; j++) {
 					assetStore.put({
-						key: name + "::" + assets[j].filename,
-						project_name: name,
+						key: PROJECT_KEY + "::" + assets[j].filename,
+						project_name: PROJECT_KEY,
 						filename: assets[j].filename,
 						png_base64: assets[j].png_base64,
 						json_metadata: assets[j].json_metadata,
@@ -1412,23 +1418,16 @@ window.TWIWCS_DB = (function () {
 		tx.oncomplete = function () { _ok(callback, { success: true }); };
 		tx.onerror = function (e) { _err(callback, e.target.error ? e.target.error.message : "save failed"); };
 	}
-	function loadProjectList(callback) {
-		if (!_db) { _err(callback, "DB not initialized"); return; }
-		var tx = _db.transaction("projects", "readonly");
-		var req = tx.objectStore("projects").getAllKeys();
-		req.onsuccess = function (e) { _ok(callback, { success: true, names: e.target.result }); };
-		req.onerror = function (e) { _err(callback, e.target.error ? e.target.error.message : "list failed"); };
-	}
-	function loadProject(name, callback) {
+	function loadProject(callback) {
 		if (!_db) { _err(callback, "DB not initialized"); return; }
 		var tx = _db.transaction(["projects", "assets"], "readonly");
-		var projReq = tx.objectStore("projects").get(name);
+		var projReq = tx.objectStore("projects").get(PROJECT_KEY);
 		projReq.onsuccess = function (e) {
 			var project = e.target.result;
-			if (!project) { _err(callback, "Project not found: " + name); return; }
+			if (!project) { _err(callback, "No saved project"); return; }
 			var assetStore = tx.objectStore("assets");
 			var idx = assetStore.index("project_name");
-			var allReq = idx.getAll(IDBKeyRange.only(name));
+			var allReq = idx.getAll(IDBKeyRange.only(PROJECT_KEY));
 			allReq.onsuccess = function (e2) {
 				var rawAssets = e2.target.result || [];
 				var assets = [];
@@ -1463,7 +1462,7 @@ window.TWIWCS_DB = (function () {
 		};
 		input.click();
 	}
-	return { init: init, saveProject: saveProject, loadProjectList: loadProjectList, loadProject: loadProject, exportTwiwcs: exportTwiwcs, importTwiwcs: importTwiwcs };
+	return { init: init, hasSavedProject: hasSavedProject, saveProject: saveProject, loadProject: loadProject, exportTwiwcs: exportTwiwcs, importTwiwcs: importTwiwcs };
 })();
 """
 
@@ -1473,10 +1472,24 @@ func _on_db_init_complete(json_str: String) -> void:
 	var result = JSON.parse_string(json_str)
 	if result and result.get("success", false):
 		_js_db_ready = true
-		print("[TWIWCS] DB init SUCCESS — _js_db_ready now true")
-		_refresh_project_list()
+		print("[TWIWCS] DB init SUCCESS — checking for saved project")
+		_check_for_saved_project()
 	else:
 		push_warning("[TWIWCS] DB init FAILED: ", result.get("error", "unknown") if result else "null result")
+
+
+func _check_for_saved_project() -> void:
+	JavaScriptBridge.eval("window._twiwcs_check_result = null; window.TWIWCS_DB.hasSavedProject(function(d) { window._twiwcs_check_result = d; })")
+	_poll_db_result("_twiwcs_check_result", _on_check_complete)
+
+
+func _on_check_complete(json_str: String) -> void:
+	var result = JSON.parse_string(json_str)
+	if result and result.get("success", false) and result.get("exists", false):
+		_has_saved_project = true
+		_load_confirm_dialog.popup_centered()
+	else:
+		_has_saved_project = false
 
 
 
@@ -1523,57 +1536,81 @@ func _serialize_asset_sets_for_save() -> String:
 	return JSON.stringify(sets_data)
 
 
+func _setup_save_load_dialogs() -> void:
+	# Save overwrite confirmation
+	_save_confirm_dialog = ConfirmationDialog.new()
+	_save_confirm_dialog.dialog_text = "A project is already saved. Overwrite it?"
+	_save_confirm_dialog.get_ok_button().text = "Overwrite"
+	_save_confirm_dialog.get_cancel_button().text = "Cancel"
+	_save_confirm_dialog.confirmed.connect(_save_project)
+	add_child(_save_confirm_dialog)
+	# Load prompt on startup
+	_load_confirm_dialog = ConfirmationDialog.new()
+	_load_confirm_dialog.dialog_text = "A saved project was found. Load it?"
+	_load_confirm_dialog.get_ok_button().text = "Load"
+	_load_confirm_dialog.get_cancel_button().text = "New Project"
+	_load_confirm_dialog.confirmed.connect(_load_project)
+	add_child(_load_confirm_dialog)
+
+
+func _on_save_pressed() -> void:
+	print("[TWIWCS] Save button pressed — _js_db_ready=", _js_db_ready, " _has_saved_project=", _has_saved_project)
+	if not _js_db_ready:
+		_show_status("Save failed: DB not initialized (run as HTML5 export)")
+		return
+	if _has_saved_project:
+		_save_confirm_dialog.popup_centered()
+	else:
+		_save_project()
+
+
 func _save_project() -> void:
-	print("[TWIWCS] _save_project called — _js_db_ready=", _js_db_ready, " name='", _current_project_name, "'")
-	if not _js_db_ready or _current_project_name.is_empty():
-		if not _js_db_ready:
-			push_warning("[TWIWCS] Save blocked: IndexedDB not ready. Are you running outside HTML5 export?")
-			_show_status("Save failed: DB not initialized (run as HTML5 export)")
-		else:
-			push_warning("[TWIWCS] Save blocked: project name is empty.")
-			_show_status("Save failed: project name is empty")
+	print("[TWIWCS] _save_project called — _js_db_ready=", _js_db_ready)
+	if not _js_db_ready:
+		_show_status("Save failed: DB not ready")
 		return
 	var layout_json = _serialize_layout()
 	var assets_json = _serialize_asset_sets_for_save()
+	print("[TWIWCS] layout_json length=", layout_json.length(), " assets_json length=", assets_json.length())
 	if OS.has_feature("web") and JavaScriptBridge:
-		# Web: save to IndexedDB
+		# Push layout (small) and assets (large, chunked) into a single
+		# JS array, then hand everything to saveProject in ONE eval.
 		JavaScriptBridge.eval("window._twiwcs_savelayout = %s" % layout_json)
-		JavaScriptBridge.eval("window._twiwcs_saveassets = %s" % assets_json)
-		JavaScriptBridge.eval("""window._twiwcs_save_result = null; window.TWIWCS_DB.saveProject(
-			'%s',
-			JSON.stringify(window._twiwcs_savelayout),
-			JSON.stringify(window._twiwcs_saveassets),
-			function(d) { window._twiwcs_save_result = d; })""" % _current_project_name.replace("\'", "\\'"))
+		JavaScriptBridge.eval("window._twiwcs_savechunks = []")
+		var chunk_size = 500000
+		var pos := 0
+		while pos < assets_json.length():
+			var end := mini(pos + chunk_size, assets_json.length())
+			var chunk := assets_json.substr(pos, end - pos)
+			JavaScriptBridge.eval("window._twiwcs_savechunks.push(%s)" % JSON.stringify(chunk))
+			pos = end
+		# Assemble + save in one shot: join chunks → parse → call saveProject
+		# This keeps the heavy work entirely in JS, minimal eval() calls into wasm.
+		print("[TWIWCS] calling saveProject in one shot...")
+		JavaScriptBridge.eval("""(function() {
+			var assetsStr = window._twiwcs_savechunks.join('');
+			window._twiwcs_savechunks = null;
+			window._twiwcs_save_result = null;
+			window.TWIWCS_DB.saveProject(
+				JSON.stringify(window._twiwcs_savelayout),
+				assetsStr,
+				function(d) { window._twiwcs_save_result = d; });
+		})()""")
+		print("[TWIWCS] saveProject eval done — starting poll")
 		_poll_db_result("_twiwcs_save_result", _on_db_save_complete)
 	else:
-		# Desktop/editor: save to file via dialog
-		var package = {
-			"twiwcs_version": "1.0",
-			"layout": JSON.parse_string(layout_json),
-			"asset_sets": JSON.parse_string(assets_json),
-		}
-		var package_json = JSON.stringify(package)
-		var safe_name = _current_project_name.to_lower().replace(" ", "_").replace("/", "_")
-		var dialog := FileDialog.new()
-		dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
-		dialog.access = FileDialog.ACCESS_FILESYSTEM
-		dialog.filters = PackedStringArray(["*.twiwcs;TWIWCS Project"])
-		dialog.file_selected.connect(func(path): _write_json_file(path, package_json); _show_status("Project saved: " + path.get_file()); dialog.queue_free())
-		dialog.canceled.connect(func(): dialog.queue_free())
-		add_child(dialog)
-		dialog.popup_centered(Vector2i(800, 600))
-		print("[TWIWCS] Saving to file (non-web fallback)")
+		_show_status("Save only works in HTML5 export")
 
 
 func _on_db_save_complete(json_str: String) -> void:
 	var result = JSON.parse_string(json_str)
 	if result and result.get("success", false):
-		print("Project saved: ", _current_project_name)
-		_show_status("✅ Project saved: " + _current_project_name)
-		_refresh_project_list()
+		_has_saved_project = true
+		print("[TWIWCS] Project saved")
+		_show_status("✅ Project saved")
 	else:
-		push_warning("Save failed: ", result.get("error", "unknown"))
-		_show_status("❌ Save failed: " + result.get("error", "unknown"))
+		push_warning("[TWIWCS] Save failed: ", result.get("error", "unknown"))
+		_show_status("❌ Save failed: " + str(result.get("error", "unknown")))
 
 
 func _show_status(msg: String, duration: float = 4.0) -> void:
@@ -1616,33 +1653,10 @@ func _show_status(msg: String, duration: float = 4.0) -> void:
 
 
 
-func _refresh_project_list() -> void:
-	if not _js_db_ready or not _project_list_dropdown:
+func _load_project() -> void:
+	if not _js_db_ready:
 		return
-	JavaScriptBridge.eval("window._twiwcs_list_result = null; window.TWIWCS_DB.loadProjectList(function(d) { window._twiwcs_list_result = d; })")
-	_poll_db_result("_twiwcs_list_result", _on_db_list_complete)
-
-
-func _on_db_list_complete(json_str: String) -> void:
-	var result = JSON.parse_string(json_str)
-	if result == null or not result.get("success", false):
-		return
-	_project_list_dropdown.clear()
-	_project_list_dropdown.add_item("-- Select Project --")
-	var names = result.get("names", [])
-	for n in names:
-		_project_list_dropdown.add_item(str(n))
-
-
-func _load_selected_project() -> void:
-	if not _js_db_ready or not _project_list_dropdown:
-		return
-	var idx = _project_list_dropdown.get_item_index(_project_list_dropdown.get_selected())
-	if idx <= 0:
-		return
-	var name = _project_list_dropdown.get_item_text(idx)
-	_current_project_name = name
-	JavaScriptBridge.eval("""window._twiwcs_load_result = null; window.TWIWCS_DB.loadProject('%s', function(d) { window._twiwcs_load_result = d; })""" % name.replace("'", "\\'"))
+	JavaScriptBridge.eval("window._twiwcs_load_result = null; window.TWIWCS_DB.loadProject(function(d) { window._twiwcs_load_result = d; })")
 	_poll_db_result("_twiwcs_load_result", _on_db_load_complete)
 
 
@@ -1664,8 +1678,9 @@ func _on_db_load_complete(json_str: String) -> void:
 	var layout_json = result.get("layout_json", "{}")
 	print("[TWIWCS] layout_json length: ", layout_json.length())
 	_deserialize_layout(layout_json)
-	print("[TWIWCS] Project loaded: ", _current_project_name, " — sets: ", asset_sets.size(), " sprites: ", placed_sprites.size())
-	_show_status("📂 Project loaded: " + _current_project_name)
+	_has_saved_project = true
+	print("[TWIWCS] Project loaded — sets: ", asset_sets.size(), " sprites: ", placed_sprites.size())
+	_show_status("📂 Project loaded")
 
 
 func _clear_scene() -> void:
@@ -1803,7 +1818,7 @@ func _export_twiwcs() -> void:
 		"asset_sets": JSON.parse_string(assets_json),
 	}
 	var package_json = JSON.stringify(package)
-	var project_name = _current_project_name if not _current_project_name.is_empty() else "project"
+	var project_name = "project"
 	if OS.has_feature("web"):
 		if JavaScriptBridge:
 			JavaScriptBridge.eval("window._twiwcs_exportdata = %s" % package_json)

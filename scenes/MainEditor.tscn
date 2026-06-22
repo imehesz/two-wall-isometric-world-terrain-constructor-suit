@@ -162,20 +162,6 @@ clip_text = true
 layout_mode = 2
 size_flags_horizontal = 3
 
-[node name="ProjectNameRow" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content"]
-layout_mode = 2
-
-[node name="NameLabel" type="Label" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content/ProjectNameRow"]
-layout_mode = 2
-text = "Project:"
-
-[node name="ProjectNameEdit" type="LineEdit" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content/ProjectNameRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-text = "untitled project"
-placeholder_text = "untitled project"
-
 [node name="SaveRow" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content"]
 layout_mode = 2
 
@@ -183,23 +169,7 @@ layout_mode = 2
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-text = "💾 Save Project"
-
-[node name="LoadRow" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content"]
-layout_mode = 2
-
-[node name="ProjectListDropdown" type="OptionButton" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content/LoadRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-item_count = 1
-popup/item_0/text = "-- Select Project --"
-popup/item_0/id = 0
-
-[node name="LoadButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content/LoadRow"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "📂 Load"
+text = "💾 Save"
 
 [node name="BackupRow" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content"]
 layout_mode = 2

@@ -28,8 +28,6 @@ extends Control
 # Phase 6/7 references
 @onready var export_json_button: Button = %ExportJSONButton
 @onready var save_button: Button = %SaveButton
-@onready var load_button: Button = %LoadButton
-@onready var project_name_edit: LineEdit = %ProjectNameEdit
 @onready var download_backup_button: Button = %DownloadBackupButton
 @onready var import_backup_button: Button = %ImportBackupButton
 
@@ -91,8 +89,9 @@ var _is_panning: bool = false
 
 # Phase 7: Save/Load
 var _js_db_ready: bool = false
-var _current_project_name: String = ""
-var _project_list_dropdown: OptionButton = null
+var _has_saved_project: bool = false
+var _save_confirm_dialog: ConfirmationDialog
+var _load_confirm_dialog: ConfirmationDialog
 var _status_label: Label = null
 
 # Auto-repeat state

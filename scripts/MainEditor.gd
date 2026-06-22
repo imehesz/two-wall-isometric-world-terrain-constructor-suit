@@ -49,7 +49,7 @@ func _ready() -> void:
 	version_label.offset_top = -30
 	version_label.offset_right = -8
 	version_label.offset_bottom = -8
-	version_label.add_theme_font_size_override("font_size", 12)
+	version_label.add_theme_font_size_override("font_size", 8)
 	version_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.45))
 	add_child(version_label)
 
@@ -135,6 +135,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		elif event.ctrl_pressed and event.keycode == KEY_Y:
 			_redo()
 			get_viewport().set_input_as_handled()
+		elif not event.ctrl_pressed and not _selected_sprites.is_empty():
+			var mult := _get_modifier_multiplier()
+			match event.keycode:
+				KEY_A:
+					_apply_transform("move_x", -MOVE_STEP * mult)
+					get_viewport().set_input_as_handled()
+				KEY_D:
+					_apply_transform("move_x", MOVE_STEP * mult)
+					get_viewport().set_input_as_handled()
+				KEY_W:
+					_apply_transform("move_y", -MOVE_STEP * mult)
+					get_viewport().set_input_as_handled()
+				KEY_S:
+					_apply_transform("move_y", MOVE_STEP * mult)
+					get_viewport().set_input_as_handled()
 
 
 # ════════════════════════════════════════════════════════════

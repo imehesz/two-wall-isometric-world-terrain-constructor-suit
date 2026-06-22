@@ -93,6 +93,7 @@ var _is_panning: bool = false
 var _js_db_ready: bool = false
 var _current_project_name: String = ""
 var _project_list_dropdown: OptionButton = null
+var _status_label: Label = null
 
 # Auto-repeat state
 var _repeat_timer: Timer

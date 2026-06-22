@@ -1402,7 +1402,9 @@ window.TWIWCS_DB = (function () {
 						project_name: name,
 						filename: assets[j].filename,
 						png_base64: assets[j].png_base64,
-						json_metadata: assets[j].json_metadata
+						json_metadata: assets[j].json_metadata,
+						json_path: assets[j].json_path || "",
+						set_id: assets[j].set_id
 					});
 				}
 			}
@@ -1431,7 +1433,7 @@ window.TWIWCS_DB = (function () {
 				var rawAssets = e2.target.result || [];
 				var assets = [];
 				for (var i = 0; i < rawAssets.length; i++) {
-					assets.push({ filename: rawAssets[i].filename, png_base64: rawAssets[i].png_base64, json_metadata: rawAssets[i].json_metadata });
+					assets.push({ filename: rawAssets[i].filename, png_base64: rawAssets[i].png_base64, json_metadata: rawAssets[i].json_metadata, json_path: rawAssets[i].json_path || "", set_id: rawAssets[i].set_id });
 				}
 				_ok(callback, { success: true, layout_json: project.layout_json, assets_json: JSON.stringify(assets) });
 			};
@@ -1514,6 +1516,7 @@ func _serialize_asset_sets_for_save() -> String:
 		sets_data.append({
 			"set_id": s["id"],
 			"filename": s["png_path"],
+			"json_path": s.get("json_path", ""),
 			"png_base64": png_b64,
 			"json_metadata": s["json_text"],
 		})
@@ -1644,19 +1647,25 @@ func _load_selected_project() -> void:
 
 
 func _on_db_load_complete(json_str: String) -> void:
+	print("[TWIWCS] _on_db_load_complete: ", json_str.substr(0, 500))
 	var result = JSON.parse_string(json_str)
 	if result == null or not result.get("success", false):
-		push_warning("Load failed: ", result.get("error", "unknown") if result else "parse error")
+		var err_msg = result.get("error", "unknown") if result else "parse error"
+		push_warning("[TWIWCS] Load failed: ", err_msg)
+		_show_status("❌ Load failed: " + str(err_msg))
 		return
 	# Clear current scene
 	_clear_scene()
 	# Restore asset sets
 	var assets_json = result.get("assets_json", "[]")
+	print("[TWIWCS] assets_json length: ", assets_json.length())
 	_deserialize_asset_sets(assets_json)
 	# Restore placed sprites
 	var layout_json = result.get("layout_json", "{}")
+	print("[TWIWCS] layout_json length: ", layout_json.length())
 	_deserialize_layout(layout_json)
-	print("Project loaded: ", _current_project_name)
+	print("[TWIWCS] Project loaded: ", _current_project_name, " — sets: ", asset_sets.size(), " sprites: ", placed_sprites.size())
+	_show_status("📂 Project loaded: " + _current_project_name)
 
 
 func _clear_scene() -> void:
@@ -1682,15 +1691,24 @@ func _clear_scene() -> void:
 func _deserialize_asset_sets(data_json: String) -> void:
 	var sets_data = JSON.parse_string(data_json)
 	if sets_data == null or not (sets_data is Array):
+		print("[TWIWCS] _deserialize_asset_sets: parse failed or not array — raw: ", data_json.substr(0, 300))
 		return
+	print("[TWIWCS] _deserialize_asset_sets: ", sets_data.size(), " entries")
 	for entry in sets_data:
-		_next_set_id += 1
 		_set_count += 1
-		var set_id = _next_set_id
+		# Use the saved set_id so layout references match during deserialization.
+		# Fall back to sequential (matches old behavior) if set_id wasn't stored.
+		var set_id = entry.get("set_id", 0)
+		if set_id == 0:
+			set_id = _set_count
+		if set_id > _next_set_id:
+			_next_set_id = set_id
+		var filename = entry.get("filename", "")
+		print("[TWIWCS]   set_id=", set_id, " filename=", filename)
 		var s = {
 			"id": set_id,
-			"png_path": entry.get("filename", ""),
-			"json_path": "",
+			"png_path": filename,
+			"json_path": entry.get("json_path", ""),
 			"sheet_texture": null,
 			"sheet_png_bytes": PackedByteArray(),
 			"json_text": entry.get("json_metadata", ""),
@@ -1707,19 +1725,36 @@ func _deserialize_asset_sets(data_json: String) -> void:
 				var image := Image.new()
 				if image.load_png_from_buffer(png_bytes) == OK:
 					s["sheet_texture"] = ImageTexture.create_from_image(image)
-			# Parse JSON metadata
-			var meta_text = entry.get("json_metadata", "")
-			if meta_text != "":
-				_parse_json_for_set(set_id, meta_text)
+					print("[TWIWCS]   PNG decoded OK: ", image.get_size())
+				else:
+					print("[TWIWCS]   PNG decode FAILED")
+					push_warning("[TWIWCS] Failed to decode PNG for set ", set_id)
+			else:
+				print("[TWIWCS]   base64 decode produced empty bytes")
+				push_warning("[TWIWCS] Empty PNG bytes for set ", set_id)
+		else:
+			print("[TWIWCS]   no png_base64 data")
+			push_warning("[TWIWCS] No png_base64 for set ", set_id)
+		# Append to asset_sets BEFORE parsing JSON so _find_set works
 		asset_sets.append(s)
+		# Parse JSON metadata
+		var meta_text = entry.get("json_metadata", "")
+		if meta_text != "":
+			_parse_json_for_set(set_id, meta_text)
+			print("[TWIWCS]   frames parsed: ", s["frames"].size())
+		else:
+			print("[TWIWCS]   no json_metadata")
 		asset_sections_container.add_child(s["section"])
 		_update_set_ui(set_id)
 		_try_build_set(set_id)
+	print("[TWIWCS] _deserialize_asset_sets done — total sets: ", asset_sets.size())
 
 
 func _deserialize_layout(layout_json: String) -> void:
+	print("[TWIWCS] _deserialize_layout: ", layout_json.substr(0, 300))
 	var data = JSON.parse_string(layout_json)
 	if data == null:
+		print("[TWIWCS] _deserialize_layout: parse failed")
 		return
 	var objects = data.get("objects", [])
 	for obj in objects:

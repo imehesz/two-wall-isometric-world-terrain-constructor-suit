@@ -84,7 +84,9 @@ var TWIWCS_DB = (function () {
                         project_name: name,
                         filename: assets[j].filename,
                         png_base64: assets[j].png_base64,
-                        json_metadata: assets[j].json_metadata
+                        json_metadata: assets[j].json_metadata,
+                        json_path: assets[j].json_path || "",
+                        set_id: assets[j].set_id
                     });
                 }
             }
@@ -142,7 +144,9 @@ var TWIWCS_DB = (function () {
                     assets.push({
                         filename: rawAssets[i].filename,
                         png_base64: rawAssets[i].png_base64,
-                        json_metadata: rawAssets[i].json_metadata
+                        json_metadata: rawAssets[i].json_metadata,
+                        json_path: rawAssets[i].json_path || "",
+                        set_id: rawAssets[i].set_id
                     });
                 }
                 _ok(callback, {

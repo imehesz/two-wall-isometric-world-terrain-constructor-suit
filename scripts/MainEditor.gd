@@ -1827,19 +1827,19 @@ func _deserialize_layout(layout_json: String) -> void:
 # Phase 7: .twiwcs Portable Backup
 # ════════════════════════════════════════════════════════════
 
-func _export_twiwcs() -> void:
+func _export_twiwcs(project_name: String = "project") -> void:
 	var layout_json = _serialize_layout()
 	var assets_json = _serialize_asset_sets_for_save()
-	# Build the .twiwcs package
-	var package = {
+	# Pre-build package template — project_name gets swapped on desktop
+	var package_template = {
 		"twiwcs_version": "1.0",
+		"project_name": project_name,
 		"layout": JSON.parse_string(layout_json),
 		"asset_sets": JSON.parse_string(assets_json),
 	}
-	var package_json = JSON.stringify(package)
-	var project_name = "project"
 	if OS.has_feature("web"):
 		if JavaScriptBridge:
+			var package_json = JSON.stringify(package_template)
 			JavaScriptBridge.eval("window._twiwcs_exportdata = %s" % package_json)
 			JavaScriptBridge.eval("""window.TWIWCS_DB.exportTwiwcs('%s', JSON.stringify(window._twiwcs_exportdata))""" % project_name.replace("'", "\\'"))
 	else:
@@ -1847,7 +1847,12 @@ func _export_twiwcs() -> void:
 		dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
 		dialog.access = FileDialog.ACCESS_FILESYSTEM
 		dialog.filters = PackedStringArray(["*.twiwcs;TWIWCS Backup"])
-		dialog.file_selected.connect(func(path): _write_json_file(path, package_json); dialog.queue_free())
+		dialog.file_selected.connect(func(path):
+			var pname = path.get_file().get_basename()
+			package_template["project_name"] = pname
+			_write_json_file(path, JSON.stringify(package_template))
+			dialog.queue_free()
+		)
 		dialog.canceled.connect(func(): dialog.queue_free())
 		add_child(dialog)
 		dialog.popup_centered(Vector2i(800, 600))

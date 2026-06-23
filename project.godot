@@ -13,7 +13,7 @@ config_version=5
 config/name="Two-Wall Isometric Terrain Constructor"
 run/main_scene="res://scenes/MainEditor.tscn"
 config/features=PackedStringArray("4.4")
-boot_splash/image="uid://cd6p7vbq8cl6n"
+boot_splash/image="uid://sr7mbnqge5c0"
 
 [display]
 

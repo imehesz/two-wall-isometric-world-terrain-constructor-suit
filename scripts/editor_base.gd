@@ -5,7 +5,7 @@ extends Control
 # ── References ───────────────────────────────────────────────
 @onready var sub_viewport: SubViewport = %SubViewport
 @onready var sub_viewport_container: SubViewportContainer = %SubViewportContainer
-@onready var canvas_panel: PanelContainer = %CanvasPanel
+@onready var canvas_panel: MarginContainer = %CanvasPanel
 @onready var canvas_bg_color: ColorPickerButton = %CanvasBgColorPicker
 @onready var room_color_picker: ColorPickerButton = %RoomColorPicker
 @onready var canvas_background: ColorRect = %CanvasBackground
@@ -18,15 +18,13 @@ extends Control
 @onready var asset_sections_container: VBoxContainer = %AssetSectionsContainer
 @onready var main_vbox: VBoxContainer = %MainVBox
 # Phase 4 references
-@onready var toolbar: HBoxContainer = %Toolbar
 @onready var insert_button: Button = %InsertButton
 @onready var select_button: Button = %SelectButton
 @onready var undo_button: Button = %UndoButton
 @onready var redo_button: Button = %RedoButton
 @onready var inspector_section: VBoxContainer = %ObjectInspectorSection
 @onready var inspector_content: VBoxContainer = inspector_section.get_node("Content")
-# Phase 6/7 references
-@onready var export_json_button: Button = %ExportJSONButton
+# Phase 7 references
 @onready var save_button: Button = %SaveButton
 @onready var download_backup_button: Button = %DownloadBackupButton
 @onready var import_backup_button: Button = %ImportBackupButton

@@ -2,6 +2,26 @@ extends "res://scripts/editor_base.gd"
 ## Two-Wall Isometric Terrain Constructor — Main Editor
 ## UI setup, tools, selection, indicators, inspector, assets, save/load.
 
+var _toolbar_help_label: Label
+
+const _INSPIRATIONS := [
+	"Create something beautiful today",
+	"Every great world starts with one tile",
+	"Your imagination is the only limit",
+	"Build worlds, tell stories",
+	"Pixels become places",
+	"Design the impossible",
+	"Where will your journey begin?",
+	"Every detail matters",
+	"Dream it, build it",
+	"The canvas is yours",
+	"Make something wonderful",
+	"Great art starts with a single step",
+	"Your world, your rules",
+	"Let creativity flow",
+	"Every scene tells a story",
+]
+
 
 # ════════════════════════════════════════════════════════════
 # Initialization
@@ -30,13 +50,44 @@ func _ready() -> void:
 	call_deferred("_load_settings")
 	call_deferred("_init_db")
 
-	# Phase 6/7: Wire buttons
-	export_json_button.pressed.connect(_export_json)
+	# Phase 7: Wire buttons
 	save_button.pressed.connect(_on_save_pressed)
 	download_backup_button.pressed.connect(_export_twiwcs)
 	import_backup_button.pressed.connect(_import_twiwcs)
 
 	_setup_save_load_dialogs()
+
+	# Inline toolbar help label — shows button description below icons on hover
+	# Restructure: VBox with buttons on top, help text centered below.
+	_toolbar_help_label = Label.new()
+	_toolbar_help_label.add_theme_font_size_override("font_size", 9)
+	_toolbar_help_label.add_theme_color_override("font_color", Color(0.15, 0.15, 0.2, 1))
+	_toolbar_help_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_toolbar_help_label.visible = true
+	_toolbar_help_label.custom_minimum_size.y = 5
+	var sb_label := StyleBoxFlat.new()
+	sb_label.bg_color = Color(0.88, 0.88, 0.88, 1)
+	sb_label.set_content_margin_all(6)
+	sb_label.content_margin_top = 0
+	sb_label.content_margin_bottom = 0
+	_toolbar_help_label.add_theme_stylebox_override("normal", sb_label)
+	var toolbar_bg = %CanvasToolbar.get_parent().get_parent()  # ToolbarBg
+	var center_ct = %CanvasToolbar.get_parent()  # CenterContainer
+	toolbar_bg.remove_child(center_ct)
+	var outer_vbox = VBoxContainer.new()
+	outer_vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	center_ct.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	outer_vbox.add_child(center_ct)
+	outer_vbox.add_child(_toolbar_help_label)
+	toolbar_bg.add_child(outer_vbox)
+	var _tb_btns := [insert_button, select_button, undo_button, redo_button,
+		save_button, download_backup_button, import_backup_button]
+	for btn in _tb_btns:
+		var desc: String = btn.tooltip_text
+		btn.tooltip_text = ""
+		btn.mouse_entered.connect(func(): _toolbar_help_label.text = desc)
+		btn.mouse_exited.connect(func(): _toolbar_help_label.text = _random_inspiration())
+	_toolbar_help_label.text = _random_inspiration()
 
 	# Version label (bottom-right)
 	var dt = Time.get_datetime_dict_from_system()
@@ -52,6 +103,14 @@ func _ready() -> void:
 	version_label.add_theme_font_size_override("font_size", 8)
 	version_label.add_theme_color_override("font_color", Color(0.4, 0.4, 0.45))
 	add_child(version_label)
+
+
+# ════════════════════════════════════════════════════════════
+# Inspiration messages
+# ════════════════════════════════════════════════════════════
+
+func _random_inspiration() -> String:
+	return _INSPIRATIONS[randi() % _INSPIRATIONS.size()]
 
 
 # ════════════════════════════════════════════════════════════
@@ -1319,33 +1378,6 @@ func _serialize_layout() -> String:
 			"locked": sprite.get_meta("locked", false),
 		})
 	return JSON.stringify({"layout_version": "1.0", "objects": objects})
-
-
-func _export_json() -> void:
-	var json_str = _serialize_layout()
-	if OS.has_feature("web"):
-		if JavaScriptBridge:
-			JavaScriptBridge.eval("""(function() {
-				var s = %s;
-				var blob = new Blob([s], {type: 'application/json'});
-				var url = URL.createObjectURL(blob);
-				var a = document.createElement('a');
-				a.href = url;
-				a.download = 'map_layout.json';
-				document.body.appendChild(a);
-				a.click();
-				document.body.removeChild(a);
-				URL.revokeObjectURL(url);
-			})();""" % json_str)
-	else:
-		var dialog := FileDialog.new()
-		dialog.file_mode = FileDialog.FILE_MODE_SAVE_FILE
-		dialog.access = FileDialog.ACCESS_FILESYSTEM
-		dialog.filters = PackedStringArray(["*.json;JSON Data"])
-		dialog.file_selected.connect(func(path): _write_json_file(path, json_str); dialog.queue_free())
-		dialog.canceled.connect(func(): dialog.queue_free())
-		add_child(dialog)
-		dialog.popup_centered(Vector2i(800, 600))
 
 
 func _write_json_file(path: String, json_str: String) -> void:

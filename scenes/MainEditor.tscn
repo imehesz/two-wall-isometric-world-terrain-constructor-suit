@@ -1,7 +1,6 @@
-[gd_scene load_steps=15 format=3 uid="uid://rnayxcg51itq"]
+[gd_scene load_steps=14 format=3 uid="uid://rnayxcg51itq"]
 
 [ext_resource type="Script" uid="uid://cwjsx3l3cdkfs" path="res://scripts/MainEditor.gd" id="1_script"]
-[ext_resource type="Texture2D" uid="uid://p4evcaqrfeg3" path="res://assets/icons/icon_export.png" id="icon_export"]
 [ext_resource type="Texture2D" uid="uid://d00j5dhhvvuoe" path="res://assets/icons/icon_import.png" id="icon_import"]
 [ext_resource type="Texture2D" uid="uid://dquqrs6jlgb0h" path="res://assets/icons/icon_insert.png" id="icon_insert"]
 [ext_resource type="Texture2D" uid="uid://cyna6dxl77cge" path="res://assets/icons/icon_load.png" id="icon_load"]
@@ -11,8 +10,8 @@
 [ext_resource type="Texture2D" uid="uid://b6nmug1ga4ogs" path="res://assets/icons/icon_settings.png" id="icon_settings"]
 [ext_resource type="Texture2D" uid="uid://cbblgtc7fg044" path="res://assets/icons/icon_undo.png" id="icon_undo"]
 
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_canvas"]
-bg_color = Color(0.12, 0.11, 0.14, 1)
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_toolbar_bg"]
+bg_color = Color(0.88, 0.88, 0.88, 1)
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_btn_hover"]
 content_margin_left = 4.0
@@ -60,30 +59,101 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+theme_override_constants/separation = 0
+dragger_visibility = 2
 
-[node name="CanvasPanel" type="PanelContainer" parent="HSplitContainer"]
+[node name="CanvasPanel" type="MarginContainer" parent="HSplitContainer"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(400, 0)
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_stretch_ratio = 7.0
-theme_override_styles/panel = SubResource("StyleBoxFlat_canvas")
 
-[node name="SubViewportContainer" type="SubViewportContainer" parent="HSplitContainer/CanvasPanel"]
+[node name="VBox" type="VBoxContainer" parent="HSplitContainer/CanvasPanel"]
+layout_mode = 2
+size_flags_horizontal = 3
+size_flags_vertical = 3
+
+[node name="ToolbarBg" type="PanelContainer" parent="HSplitContainer/CanvasPanel/VBox"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_styles/panel = SubResource("StyleBoxFlat_toolbar_bg")
+
+[node name="CenterContainer" type="CenterContainer" parent="HSplitContainer/CanvasPanel/VBox/ToolbarBg"]
+layout_mode = 2
+
+[node name="CanvasToolbar" type="HBoxContainer" parent="HSplitContainer/CanvasPanel/VBox/ToolbarBg/CenterContainer"]
+unique_name_in_owner = true
+layout_mode = 2
+theme = SubResource("Theme_panel")
+theme_override_constants/separation = 4
+
+[node name="InsertButton" type="Button" parent="HSplitContainer/CanvasPanel/VBox/ToolbarBg/CenterContainer/CanvasToolbar"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Insert Sprite (Ctrl+i)"
+icon = ExtResource("icon_insert")
+flat = true
+
+[node name="SelectButton" type="Button" parent="HSplitContainer/CanvasPanel/VBox/ToolbarBg/CenterContainer/CanvasToolbar"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Select Sprite (Ctrl+j, WASD to move)"
+icon = ExtResource("icon_select")
+flat = true
+
+[node name="UndoButton" type="Button" parent="HSplitContainer/CanvasPanel/VBox/ToolbarBg/CenterContainer/CanvasToolbar"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(32, 0)
+layout_mode = 2
+tooltip_text = "Undo (Ctrl+z)"
+icon = ExtResource("icon_undo")
+flat = true
+
+[node name="RedoButton" type="Button" parent="HSplitContainer/CanvasPanel/VBox/ToolbarBg/CenterContainer/CanvasToolbar"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(32, 0)
+layout_mode = 2
+tooltip_text = "Redo (Ctrl+y)"
+icon = ExtResource("icon_redo")
+flat = true
+
+[node name="SaveButton" type="Button" parent="HSplitContainer/CanvasPanel/VBox/ToolbarBg/CenterContainer/CanvasToolbar"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Save project"
+icon = ExtResource("icon_save")
+flat = true
+
+[node name="DownloadBackupButton" type="Button" parent="HSplitContainer/CanvasPanel/VBox/ToolbarBg/CenterContainer/CanvasToolbar"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Download backup"
+icon = ExtResource("icon_load")
+flat = true
+
+[node name="ImportBackupButton" type="Button" parent="HSplitContainer/CanvasPanel/VBox/ToolbarBg/CenterContainer/CanvasToolbar"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Import backup"
+icon = ExtResource("icon_import")
+flat = true
+
+[node name="SubViewportContainer" type="SubViewportContainer" parent="HSplitContainer/CanvasPanel/VBox"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 size_flags_vertical = 3
 stretch = true
 
-[node name="SubViewport" type="SubViewport" parent="HSplitContainer/CanvasPanel/SubViewportContainer"]
+[node name="SubViewport" type="SubViewport" parent="HSplitContainer/CanvasPanel/VBox/SubViewportContainer"]
 unique_name_in_owner = true
 transparent_bg = true
 handle_input_locally = false
-size = Vector2i(890, 720)
+size = Vector2i(896, 692)
 render_target_update_mode = 4
 
-[node name="CanvasBackground" type="ColorRect" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+[node name="CanvasBackground" type="ColorRect" parent="HSplitContainer/CanvasPanel/VBox/SubViewportContainer/SubViewport"]
 unique_name_in_owner = true
 visible = false
 anchors_preset = 15
@@ -94,25 +164,25 @@ grow_vertical = 2
 mouse_filter = 2
 color = Color(0.12, 0.11, 0.14, 1)
 
-[node name="Camera2D" type="Camera2D" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+[node name="Camera2D" type="Camera2D" parent="HSplitContainer/CanvasPanel/VBox/SubViewportContainer/SubViewport"]
 position = Vector2(0, -150)
 
-[node name="FloorPolygon" type="Polygon2D" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+[node name="FloorPolygon" type="Polygon2D" parent="HSplitContainer/CanvasPanel/VBox/SubViewportContainer/SubViewport"]
 unique_name_in_owner = true
 color = Color(0.18, 0.25, 0.38, 1)
 polygon = PackedVector2Array(0, -150, 300, 0, 0, 150, -300, 0)
 
-[node name="WallBackPolygon" type="Polygon2D" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+[node name="WallBackPolygon" type="Polygon2D" parent="HSplitContainer/CanvasPanel/VBox/SubViewportContainer/SubViewport"]
 unique_name_in_owner = true
 color = Color(0.14, 0.19, 0.3, 1)
 polygon = PackedVector2Array(0, -150, 300, 0, 300, -350, 0, -500)
 
-[node name="WallLeftPolygon" type="Polygon2D" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+[node name="WallLeftPolygon" type="Polygon2D" parent="HSplitContainer/CanvasPanel/VBox/SubViewportContainer/SubViewport"]
 unique_name_in_owner = true
 color = Color(0.11, 0.15, 0.24, 1)
 polygon = PackedVector2Array(-300, 0, 0, -150, 0, -500, -300, -350)
 
-[node name="RoomOutline" type="Line2D" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+[node name="RoomOutline" type="Line2D" parent="HSplitContainer/CanvasPanel/VBox/SubViewportContainer/SubViewport"]
 unique_name_in_owner = true
 visible = false
 z_index = 1
@@ -120,7 +190,7 @@ points = PackedVector2Array(-300, 0, 0, -150, 0, -500, 300, -350, 300, 0, 0, 150
 width = 2.0
 default_color = Color(0.55, 0.65, 0.85, 1)
 
-[node name="AssetDropZone" type="Node2D" parent="HSplitContainer/CanvasPanel/SubViewportContainer/SubViewport"]
+[node name="AssetDropZone" type="Node2D" parent="HSplitContainer/CanvasPanel/VBox/SubViewportContainer/SubViewport"]
 unique_name_in_owner = true
 
 [node name="ControlPanel" type="PanelContainer" parent="HSplitContainer"]
@@ -141,87 +211,6 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
 theme_override_constants/separation = 2
-
-[node name="Toolbar" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 4
-
-[node name="InsertButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/Toolbar"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-tooltip_text = "Insert sprite"
-icon = ExtResource("icon_insert")
-flat = true
-
-[node name="SelectButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/Toolbar"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-tooltip_text = "Select sprite"
-icon = ExtResource("icon_select")
-flat = true
-
-[node name="UndoButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/Toolbar"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(32, 0)
-layout_mode = 2
-tooltip_text = "Undo"
-icon = ExtResource("icon_undo")
-flat = true
-
-[node name="RedoButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/Toolbar"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(32, 0)
-layout_mode = 2
-tooltip_text = "Redo"
-icon = ExtResource("icon_redo")
-flat = true
-
-[node name="SaveLoadSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="HeaderButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection"]
-layout_mode = 2
-size_flags_horizontal = 3
-tooltip_text = "Save / Load"
-text = "▼ Save / Load"
-flat = true
-clip_text = true
-
-[node name="Content" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection"]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="SaveRow" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content"]
-layout_mode = 2
-
-[node name="SaveButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content/SaveRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-tooltip_text = "Save project"
-icon = ExtResource("icon_save")
-
-[node name="BackupRow" type="HBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content"]
-layout_mode = 2
-
-[node name="DownloadBackupButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content/BackupRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-tooltip_text = "Download backup"
-icon = ExtResource("icon_load")
-
-[node name="ImportBackupButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/SaveLoadSection/Content/BackupRow"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-tooltip_text = "Import backup"
-icon = ExtResource("icon_import")
 
 [node name="ObjectInspectorSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
 unique_name_in_owner = true
@@ -298,26 +287,3 @@ custom_minimum_size = Vector2(40, 30)
 layout_mode = 2
 color = Color(0.55, 0.65, 0.85, 1)
 edit_alpha = false
-
-[node name="ExporterSection" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox"]
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="HeaderButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ExporterSection"]
-layout_mode = 2
-size_flags_horizontal = 3
-tooltip_text = "Exporter"
-text = "▶ Exporter"
-flat = true
-clip_text = true
-
-[node name="Content" type="VBoxContainer" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ExporterSection"]
-visible = false
-layout_mode = 2
-size_flags_horizontal = 3
-
-[node name="ExportJSONButton" type="Button" parent="HSplitContainer/ControlPanel/ScrollContainer/MainVBox/ExporterSection/Content"]
-unique_name_in_owner = true
-layout_mode = 2
-tooltip_text = "Export JSON layout"
-icon = ExtResource("icon_export")

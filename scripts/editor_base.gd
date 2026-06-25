@@ -147,6 +147,13 @@ func _apply_bg_color(color: Color) -> void:
 		style = StyleBoxFlat.new()
 	style.bg_color = color
 	canvas_panel.add_theme_stylebox_override("panel", style)
+	# Set the SubViewport clear color as the canvas background
+	sub_viewport.transparent_bg = false
+	RenderingServer.set_default_clear_color(color)
+
+
+func _process(_delta: float) -> void:
+	pass
 
 
 func _apply_room_color(color: Color) -> void:

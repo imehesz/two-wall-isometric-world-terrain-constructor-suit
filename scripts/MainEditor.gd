@@ -59,6 +59,7 @@ func _ready() -> void:
 
 	# Phase 9: Grid toggle
 	grid_button.pressed.connect(_on_grid_toggled)
+	help_button.pressed.connect(_on_help_pressed)
 
 	# Inline toolbar help label — shows button description below icons on hover
 	# Restructure: VBox with buttons on top, help text centered below.
@@ -84,7 +85,7 @@ func _ready() -> void:
 	outer_vbox.add_child(_toolbar_help_label)
 	toolbar_bg.add_child(outer_vbox)
 	var _tb_btns := [insert_button, select_button, undo_button, redo_button,
-		save_button, download_backup_button, import_backup_button, grid_button]
+		save_button, download_backup_button, import_backup_button, grid_button, help_button]
 	for btn in _tb_btns:
 		var desc: String = btn.tooltip_text
 		btn.tooltip_text = ""
@@ -193,6 +194,90 @@ func _on_grid_toggled() -> void:
 		grid_button.add_theme_stylebox_override("normal", active_sb)
 	else:
 		grid_button.add_theme_stylebox_override("normal", inactive_sb)
+
+
+# ════════════════════════════════════════════════════════════
+# Phase 9: Help Popup
+# ════════════════════════════════════════════════════════════
+
+func _on_help_pressed() -> void:
+	var popup := PopupPanel.new()
+	popup.title = "Keyboard Shortcuts"
+	popup.size = Vector2i(380, 420)
+
+	# Solid black background, no transparency
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.0, 0.0, 0.0, 1.0)
+	sb.set_content_margin_all(12)
+	popup.add_theme_stylebox_override("panel", sb)
+	popup.add_theme_color_override("font_color", Color.WHITE)
+
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+
+	var vbox := VBoxContainer.new()
+	vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	vbox.add_theme_constant_override("separation", 2)
+
+	var shortcuts := [
+		["", "— Tools —"],
+		["Ctrl+I", "Insert mode"],
+		["Ctrl+J", "Select mode"],
+		["Ctrl+G", "Toggle grid"],
+		["", "— Selection —"],
+		["Click", "Select sprite"],
+		["Shift+Click", "Add to selection"],
+		["Del / Click ✕", "Delete selected"],
+		["", "— Movement —"],
+		["WASD", "Move selected"],
+		["Shift", "×10 speed"],
+		["Alt", "×0.1 speed"],
+		["", "— Canvas —"],
+		["Middle / Right drag", "Pan canvas"],
+		["Scroll wheel", "Zoom in/out"],
+		["", "— Edit —"],
+		["Ctrl+Z", "Undo"],
+		["Ctrl+Y / Ctrl+Shift+Z", "Redo"],
+	]
+
+	for s in shortcuts:
+		if s[0] == "" and vbox.get_child_count() > 0:
+			# Spacer before section headers
+			var spacer := Control.new()
+			spacer.custom_minimum_size.y = 6
+			vbox.add_child(spacer)
+		var row := HBoxContainer.new()
+		row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if s[0] == "":
+			# Section header
+			var lbl := Label.new()
+			lbl.text = s[1]
+			lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			lbl.add_theme_font_size_override("font_size", 11)
+			lbl.add_theme_color_override("font_color", Color.WHITE)
+			row.add_child(lbl)
+		else:
+			var key_lbl := Label.new()
+			key_lbl.text = s[0]
+			key_lbl.custom_minimum_size.x = 140
+			key_lbl.add_theme_font_size_override("font_size", 11)
+			key_lbl.add_theme_color_override("font_color", Color.WHITE)
+			row.add_child(key_lbl)
+			var desc_lbl := Label.new()
+			desc_lbl.text = s[1]
+			desc_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			desc_lbl.add_theme_font_size_override("font_size", 11)
+			desc_lbl.add_theme_color_override("font_color", Color.WHITE)
+			row.add_child(desc_lbl)
+		vbox.add_child(row)
+
+	scroll.add_child(vbox)
+	popup.add_child(scroll)
+
+	# Center on screen
+	add_child(popup)
+	popup.popup_centered(popup.size)
 
 
 func _unhandled_input(event: InputEvent) -> void:

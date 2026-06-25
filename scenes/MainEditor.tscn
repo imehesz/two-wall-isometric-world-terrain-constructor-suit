@@ -1,8 +1,9 @@
-[gd_scene load_steps=16 format=3 uid="uid://rnayxcg51itq"]
+[gd_scene load_steps=17 format=3 uid="uid://rnayxcg51itq"]
 
 [ext_resource type="Script" uid="uid://cwjsx3l3cdkfs" path="res://scripts/MainEditor.gd" id="1_script"]
 [ext_resource type="Script" uid="uid://6ex8x1b02nfe" path="res://scripts/grid_overlay.gd" id="grid_overlay"]
 [ext_resource type="Texture2D" uid="uid://ctc0jqkbbugtg" path="res://assets/icons/icon_grid.png" id="icon_grid"]
+[ext_resource type="Texture2D" uid="uid://c0vdnt11hlc7b" path="res://assets/icons/icon_help.png" id="icon_help"]
 [ext_resource type="Texture2D" uid="uid://d00j5dhhvvuoe" path="res://assets/icons/icon_import.png" id="icon_import"]
 [ext_resource type="Texture2D" uid="uid://dquqrs6jlgb0h" path="res://assets/icons/icon_insert.png" id="icon_insert"]
 [ext_resource type="Texture2D" uid="uid://cyna6dxl77cge" path="res://assets/icons/icon_load.png" id="icon_load"]
@@ -146,6 +147,13 @@ unique_name_in_owner = true
 layout_mode = 2
 tooltip_text = "Toggle Grid (Ctrl+g)"
 icon = ExtResource("icon_grid")
+flat = true
+
+[node name="HelpButton" type="Button" parent="HSplitContainer/CanvasPanel/VBox/ToolbarBg/CenterContainer/CanvasToolbar"]
+unique_name_in_owner = true
+layout_mode = 2
+tooltip_text = "Keyboard Shortcuts"
+icon = ExtResource("icon_help")
 flat = true
 
 [node name="SubViewportContainer" type="SubViewportContainer" parent="HSplitContainer/CanvasPanel/VBox"]

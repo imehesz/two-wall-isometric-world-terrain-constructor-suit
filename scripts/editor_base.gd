@@ -28,6 +28,8 @@ extends Control
 @onready var save_button: Button = %SaveButton
 @onready var download_backup_button: Button = %DownloadBackupButton
 @onready var import_backup_button: Button = %ImportBackupButton
+# Phase 9 references
+@onready var grid_button: Button = %GridButton
 
 # ── Constants ────────────────────────────────────────────────
 const ISO_WIDTH := 600.0

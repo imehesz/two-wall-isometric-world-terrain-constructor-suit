@@ -57,6 +57,9 @@ func _ready() -> void:
 
 	_setup_save_load_dialogs()
 
+	# Phase 9: Grid toggle
+	grid_button.pressed.connect(_on_grid_toggled)
+
 	# Inline toolbar help label — shows button description below icons on hover
 	# Restructure: VBox with buttons on top, help text centered below.
 	_toolbar_help_label = Label.new()
@@ -81,7 +84,7 @@ func _ready() -> void:
 	outer_vbox.add_child(_toolbar_help_label)
 	toolbar_bg.add_child(outer_vbox)
 	var _tb_btns := [insert_button, select_button, undo_button, redo_button,
-		save_button, download_backup_button, import_backup_button]
+		save_button, download_backup_button, import_backup_button, grid_button]
 	for btn in _tb_btns:
 		var desc: String = btn.tooltip_text
 		btn.tooltip_text = ""
@@ -168,6 +171,30 @@ func _update_undo_redo_buttons() -> void:
 	redo_button.disabled = redo_stack.is_empty()
 
 
+# ════════════════════════════════════════════════════════════
+# Phase 9: Grid Toggle
+# ════════════════════════════════════════════════════════════
+
+func _on_grid_toggled() -> void:
+	var overlay := sub_viewport.get_node_or_null("GridOverlay")
+	if overlay == null:
+		return
+	overlay.visible = not overlay.visible
+	# Highlight grid button when active
+	var active_sb := StyleBoxFlat.new()
+	active_sb.bg_color = Color(0.3, 0.5, 0.3)
+	active_sb.set_corner_radius_all(3)
+	active_sb.set_content_margin_all(4)
+	var inactive_sb := StyleBoxFlat.new()
+	inactive_sb.bg_color = Color(0.15, 0.15, 0.18)
+	inactive_sb.set_corner_radius_all(3)
+	inactive_sb.set_content_margin_all(4)
+	if overlay.visible:
+		grid_button.add_theme_stylebox_override("normal", active_sb)
+	else:
+		grid_button.add_theme_stylebox_override("normal", inactive_sb)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	# Phase 5: Stop panning if mouse released outside canvas
 	if _is_panning and event is InputEventMouseButton and not event.pressed:
@@ -187,6 +214,9 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 		elif event.ctrl_pressed and event.keycode == KEY_I:
 			_on_tool_changed(ToolMode.INSERT)
+			get_viewport().set_input_as_handled()
+		elif event.ctrl_pressed and event.keycode == KEY_G:
+			_on_grid_toggled()
 			get_viewport().set_input_as_handled()
 		elif event.ctrl_pressed and event.keycode == KEY_J:
 			_on_tool_changed(ToolMode.SELECT)

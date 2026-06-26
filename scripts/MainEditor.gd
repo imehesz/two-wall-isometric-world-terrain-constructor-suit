@@ -873,6 +873,7 @@ func _on_add_assets_pressed() -> void:
 
 	var entry = {
 		"id": set_id,
+		"upload_id": randi_range(10000, 99999),
 		"png_path": "",
 		"json_path": "",
 		"sheet_texture": null,
@@ -1077,7 +1078,7 @@ func _process_web_png(set_id: int, b64: String) -> void:
 		if not s.is_empty():
 			s["sheet_texture"] = ImageTexture.create_from_image(image)
 			s["sheet_png_bytes"] = byte_array
-			s["png_path"] = "web_upload.png"
+			s["png_path"] = "twiwcs-%d.png" % s["upload_id"]
 			_update_set_ui(set_id)
 			_try_build_set(set_id)
 
@@ -1087,7 +1088,7 @@ func _process_web_json(set_id: int, text: String) -> void:
 	var s = _find_set(set_id)
 	if not s.is_empty():
 		s["json_text"] = text
-		s["json_path"] = "web_upload.json"
+		s["json_path"] = "twiwcs-%d.json" % s["upload_id"]
 		_update_set_ui(set_id)
 		_try_build_set(set_id)
 
@@ -1888,6 +1889,7 @@ func _deserialize_asset_sets(data_json: String) -> void:
 		print("[TWIWCS]   set_id=", set_id, " filename=", filename)
 		var s = {
 			"id": set_id,
+			"upload_id": randi_range(10000, 99999),
 			"png_path": filename,
 			"json_path": entry.get("json_path", ""),
 			"sheet_texture": null,

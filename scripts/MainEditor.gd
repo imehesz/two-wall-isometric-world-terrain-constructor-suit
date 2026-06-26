@@ -105,7 +105,7 @@ func _ready() -> void:
 	var dt = Time.get_datetime_dict_from_system()
 	var datetime_str = "%04d%02d%02d%02d%02d" % [dt.year, dt.month, dt.day, dt.hour, dt.minute]
 	var version_label := Label.new()
-	version_label.text = "v.1.0." + datetime_str
+	version_label.text = "v.1.1." + datetime_str
 	version_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	version_label.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	version_label.offset_left = -200

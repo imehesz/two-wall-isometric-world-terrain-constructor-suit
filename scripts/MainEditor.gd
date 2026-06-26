@@ -24,12 +24,18 @@ const _INSPIRATIONS := [
 
 const MAX_ASSETS = 5
 
+# Arrow icons for collapsible sections
+var _icon_arrow_down: Texture2D = null
+var _icon_arrow_right: Texture2D = null
+
 
 # ════════════════════════════════════════════════════════════
 # Initialization
 # ════════════════════════════════════════════════════════════
 
 func _ready() -> void:
+	_icon_arrow_down = load("res://assets/icons/icon-arrow_down.png")
+	_icon_arrow_right = load("res://assets/icons/icon-arrow_right.png")
 	_apply_bg_color(COLOR_BG)
 	_apply_room_color(COLOR_ROOM)
 	_draw_room()
@@ -625,12 +631,14 @@ func _update_inspector() -> void:
 		inspector_content.visible = false
 		var btn = inspector_section.get_node_or_null("HeaderButton")
 		if btn:
-			btn.text = "\u25b6 Object Inspector"
+			btn.icon = _icon_arrow_right
+			btn.text = "Object Inspector"
 		return
 	inspector_content.visible = true
 	var hdr_btn = inspector_section.get_node_or_null("HeaderButton")
 	if hdr_btn:
-		hdr_btn.text = "\u25bc Object Inspector"
+		hdr_btn.icon = _icon_arrow_down
+		hdr_btn.text = "Object Inspector"
 	# Clear existing rows
 	for child in inspector_content.get_children():
 		child.queue_free()
@@ -835,9 +843,8 @@ func _connect_section_toggle(section: Control) -> void:
 
 func _toggle_section(btn: Button, content: Control) -> void:
 	content.visible = !content.visible
-	# Strip arrow prefix (2 chars: arrow + space) and prepend new arrow
-	var title = btn.text.substr(2)
-	btn.text = ("\u25bc " if content.visible else "\u25b6 ") + title
+	# Swap arrow icon (no text prefix needed — icon handles the arrow)
+	btn.icon = _icon_arrow_down if content.visible else _icon_arrow_right
 
 
 func _get_static_sections() -> Array:
@@ -908,7 +915,9 @@ func _create_asset_section(set_id: int, number: int) -> VBoxContainer:
 	btn.name = "HeaderButton"
 	btn.flat = true
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	btn.text = "▼ Asset %d/%d" % [number, MAX_ASSETS]
+	btn.icon = _icon_arrow_down
+	btn.add_theme_constant_override("icon_max_width", 15)
+	btn.text = "Asset %d/%d" % [number, MAX_ASSETS]
 	btn.clip_text = true
 	section.add_child(btn)
 
@@ -932,7 +941,8 @@ func _create_asset_section(set_id: int, number: int) -> VBoxContainer:
 	png_row.add_child(png_label)
 	var png_btn := Button.new()
 	png_btn.name = "PngLoadBtn"
-	png_btn.text = "..."
+	png_btn.icon = load("res://assets/icons/icon_upload.png")
+	png_btn.add_theme_constant_override("icon_max_width", 15)
 	png_btn.custom_minimum_size = Vector2(24, 0)
 	png_btn.pressed.connect(_on_set_png_pressed.bind(set_id))
 	png_row.add_child(png_btn)
@@ -958,7 +968,8 @@ func _create_asset_section(set_id: int, number: int) -> VBoxContainer:
 	json_row.add_child(json_label)
 	var json_btn := Button.new()
 	json_btn.name = "JsonLoadBtn"
-	json_btn.text = "..."
+	json_btn.icon = load("res://assets/icons/icon_upload.png")
+	json_btn.add_theme_constant_override("icon_max_width", 15)
 	json_btn.custom_minimum_size = Vector2(24, 0)
 	json_btn.pressed.connect(_on_set_json_pressed.bind(set_id))
 	json_row.add_child(json_btn)
@@ -1275,10 +1286,8 @@ func _relabel_asset_sections() -> void:
 	for i in range(total):
 		var btn: Button = children[i].get_node_or_null("HeaderButton")
 		if btn:
-			var is_collapsed = btn.text.begins_with("\u25b6")
-			var arrow = "\u25b6 " if is_collapsed else "\u25bc "
 			# Bottom child (i=total-1) → 1/5, top child (i=0) → total/5
-			btn.text = arrow + "Asset %d/%d" % [total - i, MAX_ASSETS]
+			btn.text = "Asset %d/%d" % [total - i, MAX_ASSETS]
 
 
 # ════════════════════════════════════════════════════════════

@@ -1,7 +1,9 @@
-[gd_scene load_steps=17 format=3 uid="uid://rnayxcg51itq"]
+[gd_scene load_steps=18 format=3 uid="uid://rnayxcg51itq"]
 
 [ext_resource type="Script" uid="uid://cwjsx3l3cdkfs" path="res://scripts/MainEditor.gd" id="1_script"]
 [ext_resource type="Script" uid="uid://6ex8x1b02nfe" path="res://scripts/grid_overlay.gd" id="grid_overlay"]
+[ext_resource type="Texture2D" uid="uid://jkeli8ytdaxn" path="res://assets/icons/icon-arrow_down.png" id="icon_arrow_down"]
+[ext_resource type="Texture2D" uid="uid://bgb1hxjo5mes3" path="res://assets/icons/icon-arrow_right.png" id="icon_arrow_right"]
 [ext_resource type="Texture2D" uid="uid://ctc0jqkbbugtg" path="res://assets/icons/icon_grid.png" id="icon_grid"]
 [ext_resource type="Texture2D" uid="uid://c0vdnt11hlc7b" path="res://assets/icons/icon_help.png" id="icon_help"]
 [ext_resource type="Texture2D" uid="uid://d00j5dhhvvuoe" path="res://assets/icons/icon_import.png" id="icon_import"]
@@ -10,7 +12,6 @@
 [ext_resource type="Texture2D" uid="uid://qoiiew2d045a" path="res://assets/icons/icon_redo.png" id="icon_redo"]
 [ext_resource type="Texture2D" uid="uid://3ehkeyb8d0ja" path="res://assets/icons/icon_save.png" id="icon_save"]
 [ext_resource type="Texture2D" uid="uid://c5r72kkcba5ex" path="res://assets/icons/icon_select.png" id="icon_select"]
-[ext_resource type="Texture2D" uid="uid://b6nmug1ga4ogs" path="res://assets/icons/icon_settings.png" id="icon_settings"]
 [ext_resource type="Texture2D" uid="uid://cbblgtc7fg044" path="res://assets/icons/icon_undo.png" id="icon_undo"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_toolbar_bg"]
@@ -238,7 +239,9 @@ size_flags_horizontal = 3
 layout_mode = 2
 size_flags_horizontal = 3
 tooltip_text = "Object Inspector"
-text = "▶ Object Inspector"
+theme_override_constants/icon_max_width = 15
+text = "Object Inspector"
+icon = ExtResource("icon_arrow_right")
 flat = true
 clip_text = true
 
@@ -267,7 +270,9 @@ size_flags_horizontal = 3
 layout_mode = 2
 size_flags_horizontal = 3
 tooltip_text = "Global Settings"
-icon = ExtResource("icon_settings")
+theme_override_constants/icon_max_width = 15
+text = "Settings"
+icon = ExtResource("icon_arrow_down")
 flat = true
 clip_text = true
 

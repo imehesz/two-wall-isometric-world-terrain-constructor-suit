@@ -22,6 +22,8 @@ const _INSPIRATIONS := [
 	"Every scene tells a story",
 ]
 
+const MAX_ASSETS = 5
+
 
 # ════════════════════════════════════════════════════════════
 # Initialization
@@ -828,12 +830,13 @@ func _connect_section_toggle(section: Control) -> void:
 	var btn: Button = section.get_node_or_null("HeaderButton")
 	var content: Control = section.get_node_or_null("Content")
 	if btn and content:
-		var title := btn.text.replace("\u25bc ", "").replace("\u25b6 ", "")
-		btn.pressed.connect(_toggle_section.bind(btn, content, title))
+		btn.pressed.connect(_toggle_section.bind(btn, content))
 
 
-func _toggle_section(btn: Button, content: Control, title: String) -> void:
+func _toggle_section(btn: Button, content: Control) -> void:
 	content.visible = !content.visible
+	# Strip arrow prefix (2 chars: arrow + space) and prepend new arrow
+	var title = btn.text.substr(2)
 	btn.text = ("\u25bc " if content.visible else "\u25b6 ") + title
 
 
@@ -854,6 +857,9 @@ func _setup_confirm_dialog() -> void:
 	_confirm_dialog.dialog_text = "Remove this asset set and all its assets from the canvas?"
 	add_child(_confirm_dialog)
 	_confirm_dialog.confirmed.connect(_on_confirm_removal)
+	_max_assets_dialog = ConfirmationDialog.new()
+	_max_assets_dialog.dialog_text = "Please Remove an asset to add a new one.\n\nWARNING: This will remove all the objects from that pack!"
+	add_child(_max_assets_dialog)
 
 
 func _on_confirm_removal() -> void:
@@ -867,6 +873,9 @@ func _on_confirm_removal() -> void:
 # ════════════════════════════════════════════════════════════
 
 func _on_add_assets_pressed() -> void:
+	if asset_sets.size() >= MAX_ASSETS:
+		_max_assets_dialog.popup_centered()
+		return
 	_next_set_id += 1
 	_set_count += 1
 	var set_id := _next_set_id
@@ -885,6 +894,8 @@ func _on_add_assets_pressed() -> void:
 	}
 	asset_sets.append(entry)
 	asset_sections_container.add_child(entry["section"])
+	asset_sections_container.move_child(entry["section"], 0)
+	_relabel_asset_sections()
 
 
 
@@ -897,7 +908,7 @@ func _create_asset_section(set_id: int, number: int) -> VBoxContainer:
 	btn.name = "HeaderButton"
 	btn.flat = true
 	btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	btn.text = "▼ Assets %d" % number
+	btn.text = "▼ Asset %d/%d" % [number, MAX_ASSETS]
 	btn.clip_text = true
 	section.add_child(btn)
 
@@ -908,7 +919,7 @@ func _create_asset_section(set_id: int, number: int) -> VBoxContainer:
 	section.add_child(content)
 
 	# Connect toggle
-	btn.pressed.connect(_toggle_section.bind(btn, content, "Assets %d" % number))
+	btn.pressed.connect(_toggle_section.bind(btn, content))
 
 	# PNG row
 	var png_row := HBoxContainer.new()
@@ -1254,6 +1265,20 @@ func _remove_asset_set(set_id: int) -> void:
 	if s["section"]:
 		s["section"].queue_free()
 	asset_sets.remove_at(idx)
+	_relabel_asset_sections()
+
+
+func _relabel_asset_sections() -> void:
+	# Update header labels: bottom = 1/5, top = 5/5 (oldest at bottom, newest at top)
+	var children = asset_sections_container.get_children()
+	var total = children.size()
+	for i in range(total):
+		var btn: Button = children[i].get_node_or_null("HeaderButton")
+		if btn:
+			var is_collapsed = btn.text.begins_with("\u25b6")
+			var arrow = "\u25b6 " if is_collapsed else "\u25bc "
+			# Bottom child (i=total-1) → 1/5, top child (i=0) → total/5
+			btn.text = arrow + "Asset %d/%d" % [total - i, MAX_ASSETS]
 
 
 # ════════════════════════════════════════════════════════════
@@ -1930,6 +1955,7 @@ func _deserialize_asset_sets(data_json: String) -> void:
 		asset_sections_container.add_child(s["section"])
 		_update_set_ui(set_id)
 		_try_build_set(set_id)
+	_relabel_asset_sections()
 	print("[TWIWCS] _deserialize_asset_sets done — total sets: ", asset_sets.size())
 
 

@@ -83,6 +83,7 @@ var _preview_tex: TextureRect
 
 # ── Confirm dialog ───────────────────────────────────────────
 var _confirm_dialog: ConfirmationDialog
+var _max_assets_dialog: ConfirmationDialog
 var _pending_removal_id: int = -1
 
 # Phase 5: Pan state
